@@ -116,6 +116,33 @@ fn cleared_shortcut_reaches_terminal_and_can_be_restored_without_restart() {
     assert!(bindings[0].action().as_any().is::<ToggleShellPicker>());
 }
 
+#[test]
+fn stale_bare_key_removal_unbinds_the_action_instead_of_swallowing_the_key() {
+    use crate::config::Action;
+    use gpui::{KeyContext, Keymap, Keystroke};
+    // Binding a bare `enter` to a workspace action and then removing it must
+    // hand the key back to the terminal: the undo replays through
+    // `stale_removal_bindings`, whose `Unbind(action)` drops the interception
+    // instead of leaving a `NoAction` in the keymap that eats the key.
+    let original = custom_workspace_binding("enter", &Action::ToggleFullscreen).unwrap();
+    let terminal_scope = workspace_binding_in_context(
+        "enter",
+        &Action::ToggleFullscreen,
+        Some(crate::gpui_shell::terminal::KEY_CONTEXT),
+    )
+    .unwrap();
+    let action_name = original.action().name().to_owned();
+    let mut keymap = Keymap::new(vec![original, terminal_scope]);
+    let contexts = [KeyContext::parse(crate::gpui_shell::terminal::KEY_CONTEXT).unwrap()];
+    let input = [Keystroke::parse("enter").unwrap()];
+    let (bindings, _) = keymap.bindings_for_input(&input, &contexts);
+    assert!(!bindings.is_empty(), "while bound, the action owns enter");
+
+    keymap.add_bindings(stale_removal_bindings("enter", &action_name));
+    let (bindings, _) = keymap.bindings_for_input(&input, &contexts);
+    assert!(bindings.is_empty(), "after removal enter is plain input again");
+}
+
 #[cfg(feature = "gpui-test-support")]
 mod dispatch {
     use super::*;
