@@ -1133,14 +1133,14 @@ impl NebulaWorkspace {
         this
     }
 
-    /// 默认窗口尺寸 = 旧壳默认画布 116×30 的反推（`display` 的
-    /// `Dimensions` 默认值）。画布按配置基准字号定形；持久化缩放只参与
-    /// 随后的实际行列反推，不能把缩放后的 116 列全加到启动窗宽上。
-    /// 布局链横向：网格 + 侧栏 + 卡缝 p_2×2(16) +
-    /// 终端水平内边距 24；纵向：网格 + 标题栏 34（gpui-component
-    /// TITLE_BAR_HEIGHT）+ 卡缝 16 + 终端垂直内边距 16。各加 2px 余量让
-    /// 浮点 floor 不缩行列；放不下的屏幕按 95% 工作区收拢（网格随之变小，
-    /// 与旧壳"开不下就小"同义）。
+    /// 启动窗口尺寸 = 启动网格 × 基准字号 cell + 布局链余量。启动网格取
+    /// `config.window.dimensions`，未配置时回落到内建默认画布（旧壳 116×30）。
+    /// 画布按配置基准字号定形；持久化缩放只参与随后的实际行列反推，不能把
+    /// 缩放后的列数全加到启动窗宽上。布局链横向：网格 + 侧栏 + 卡缝 p_2×2(16)
+    /// + 终端水平内边距 24；纵向：网格 + 标题栏 34（gpui-component
+    /// TITLE_BAR_HEIGHT）+ 卡缝 16 + 终端垂直内边距 16。各加 2px 余量让浮点
+    /// floor 不缩行列；放不下的屏幕按 95% 工作区收拢（网格随之变小，与旧壳
+    /// "开不下就小"同义）。
     fn prepare_initial_grid(
         window: &mut Window,
         cx: &mut App,
@@ -1154,10 +1154,9 @@ impl NebulaWorkspace {
         let chrome_w = sidebar_width + 16.0 + 24.0 + 2.0;
         let chrome_h = 34.0 + 16.0 + 16.0 + 2.0;
         let (w, h) = if fit_window_to_default_grid {
-            let mut w = f32::from(TerminalView::DEFAULT_GRID_COLUMNS) * f32::from(startup_cell_w)
-                + chrome_w;
-            let mut h =
-                f32::from(TerminalView::DEFAULT_GRID_LINES) * f32::from(startup_line_h) + chrome_h;
+            let (columns, lines) = super::config::startup_grid(cx);
+            let mut w = columns * f32::from(startup_cell_w) + chrome_w;
+            let mut h = lines * f32::from(startup_line_h) + chrome_h;
             if let Some(display) = cx.primary_display() {
                 let bounds = display.bounds().size;
                 w = w.min(f32::from(bounds.width) * 0.95);
