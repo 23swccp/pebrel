@@ -116,18 +116,12 @@ mod tests {
             f32::from(TerminalView::DEFAULT_GRID_COLUMNS),
             f32::from(TerminalView::DEFAULT_GRID_LINES),
         );
-        assert_eq!(
-            default_size(metrics, grid, 230.0, None),
-            size(px(1200.0), px(668.0))
-        );
+        assert_eq!(default_size(metrics, grid, 230.0, None), size(px(1200.0), px(668.0)));
         assert_eq!(
             default_size(metrics, grid, 230.0, Some(size(px(1000.0), px(600.0)))),
             size(px(1000.0), px(600.0)),
         );
-        assert_eq!(
-            default_size(metrics, grid, 300.0, None),
-            size(px(1270.0), px(668.0)),
-        );
+        assert_eq!(default_size(metrics, grid, 300.0, None), size(px(1270.0), px(668.0)),);
     }
 
     #[test]
