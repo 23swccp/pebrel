@@ -1450,6 +1450,9 @@ fn theme_editor_save_only_forks_a_non_active_custom_template_without_publishing_
 ) {
     let _fixture_guard = lock_theme_studio();
     let _settings_guard = SettingsBytesGuard::capture();
+    // 单独运行时也要准备父目录，不依赖其他测试先初始化设置存储。
+    std::fs::create_dir_all(nebula_settings::settings_dir())
+        .expect("create isolated template settings directory");
     std::fs::write(nebula_settings::settings_path(), TEST_SETTINGS)
         .expect("write isolated template settings");
     let mut theme_cleanup = CustomThemeCleanup::default();
