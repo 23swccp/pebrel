@@ -190,5 +190,5 @@ gpui = { git = "https://github.com/Kuddev/zed", rev = "2b0d6d1948e374dc7a1263a27
 # Native inputs share rendered text's device-pixel line height and expose a
 # post-paint point lookup. Window selection ends on release even when a child
 # consumes MouseUp or the platform reports the next move without a held button.
-gpui-component = { git = "https://github.com/Kuddev/gpui-component", rev = "f46ecbb06de5907af9700f3f6e2b5b0845459188", version = "=0.5.2" }
-gpui-component-assets = { git = "https://github.com/Kuddev/gpui-component", rev = "f46ecbb06de5907af9700f3f6e2b5b0845459188", version = "=0.5.1" }
+gpui-component = { git = "https://github.com/Kuddev/gpui-component", rev = "f6eb37879723b371e94afd5472ad2459908f7432", version = "=0.5.2" }
+gpui-component-assets = { git = "https://github.com/Kuddev/gpui-component", rev = "f6eb37879723b371e94afd5472ad2459908f7432", version = "=0.5.1" }
