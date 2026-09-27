@@ -1,4 +1,5 @@
 name: Full native tests
+run-name: Windows profile comparison (diagnostic branch)
 
 on:
   workflow_dispatch:
@@ -27,10 +28,104 @@ permissions:
 
 jobs:
   windows-diagnostics:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics_run != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics_run != '' && inputs.windows_diagnostics_run != 'profile-benchmark' }}
     uses: ./.github/workflows/windows-conformance.yml
     with:
       runtime_run: ${{ inputs.windows_diagnostics_run }}
+
+  # 仅此诊断分支手动运行，不替代 PR 的完整原生验证，也不回写编译缓存。
+  profile-benchmark:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics_run == 'profile-benchmark' }}
+    name: Windows hot-dependency profile comparison
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: "1"
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+      RUST_TOOLCHAIN: "1.97.1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.97.1"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.146
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: native
+          extra-key: -release-check-v2
+          target: |
+            target/ci
+            target/release
+          revision: dependencies-v1
+          save-if: "false"
+      - name: Prepare the same Windows runtime
+        shell: pwsh
+        run: |
+          ./scripts/prepare-windows-runtime.ps1 -Destination assets/windows/conhost -Architecture x64
+          ./scripts/tests/windows-runtime.tests.ps1 -Architecture x64
+      - name: Compare unchanged tests on the same runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $names = @(
+            'fractional_scale_sizes_are_exact_and_have_no_color_overshoot',
+            'vector_sourced_logos_keep_color_and_antialiased_edges_at_tab_sizes',
+            'sidebar_logos_share_only_identical_theme_pixels_at_each_dpi',
+            'large_document_is_bounded_before_ast_construction_and_partial_math_is_literal',
+            'theme_editor_save_only_forks_a_non_active_custom_template_without_publishing_it'
+          )
+          $filter = ($names | ForEach-Object { "test($_)" }) -join ' | '
+          $common = @('nextest', 'run', '--config', '.github/ci-profile.toml',
+            '--cargo-profile', 'ci', '--locked', '--workspace', '--features',
+            'nebula/gpui-test-support', '--no-fail-fast', '--retries', '0',
+            '--no-tests', 'fail', '--filterset', $filter)
+          $variants = @(
+            @{ Name = 'baseline'; Config = @() },
+            @{ Name = 'hot-dependencies'; Config = @(
+              '--config', 'profile.ci.package.resvg.opt-level=3',
+              '--config', 'profile.ci.package.rustybuzz.opt-level=3',
+              '--config', 'profile.ci.package.taffy.opt-level=3',
+              '--config', 'profile.ci.package.ttf-parser.opt-level=3'
+            ) }
+          )
+          $measurements = @()
+          foreach ($variant in $variants) {
+            $cargoArguments = $common + $variant.Config
+            Write-Output "PROFILE_BUILD $($variant.Name)"
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            & cargo @cargoArguments --no-run
+            if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $($variant.Name)" }
+            $watch.Stop()
+            $measurements += [ordered]@{ profile = $variant.Name; phase = 'compile'; seconds = $watch.Elapsed.TotalSeconds }
+            # 分开记录编译与执行；重复一次显示波动，不把一次最快值当作稳定收益。
+            foreach ($iteration in 1..2) {
+              Write-Output "PROFILE_TEST $($variant.Name) iteration=$iteration"
+              $watch.Restart()
+              & cargo @cargoArguments
+              if ($LASTEXITCODE -ne 0) { throw "Tests failed: $($variant.Name) iteration=$iteration" }
+              $watch.Stop()
+              $measurements += [ordered]@{ profile = $variant.Name; phase = 'tests'; iteration = $iteration; seconds = $watch.Elapsed.TotalSeconds }
+            }
+          }
+          $json = $measurements | ConvertTo-Json -Depth 4
+          [IO.File]::WriteAllText((Join-Path $PWD 'profile-measurements.json'), $json, [Text.UTF8Encoding]::new($false))
+          Write-Output $json
+      - name: Upload comparison measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-profile-measurements
+          path: profile-measurements.json
+          if-no-files-found: error
+          retention-days: 7
 
   # rustfmt only for now. clippy joins once the existing warning backlog is
   # cleared; several crates deny lints, so it cannot run advisory.
