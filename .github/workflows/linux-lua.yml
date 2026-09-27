@@ -86,15 +86,19 @@ jobs:
           $filter = ($names | ForEach-Object { "test($_)" }) -join ' | '
           $common = @('nextest', 'run', '--config', '.github/ci-profile.toml',
             '--cargo-profile', 'ci', '--locked', '--workspace', '--features',
-            'nebula/gpui-test-support', '--no-fail-fast', '--retries', '0',
-            '--no-tests', 'fail', '--filterset', $filter)
+            'nebula/gpui-test-support', '--filterset', $filter)
+          $hotConfig = @(
+            '--config', 'profile.ci.package.resvg.opt-level=3',
+            '--config', 'profile.ci.package.rustybuzz.opt-level=3',
+            '--config', 'profile.ci.package.taffy.opt-level=3',
+            '--config', 'profile.ci.package.ttf-parser.opt-level=3'
+          )
           $variants = @(
             @{ Name = 'baseline'; Config = @() },
-            @{ Name = 'hot-dependencies'; Config = @(
-              '--config', 'profile.ci.package.resvg.opt-level=3',
-              '--config', 'profile.ci.package.rustybuzz.opt-level=3',
-              '--config', 'profile.ci.package.taffy.opt-level=3',
-              '--config', 'profile.ci.package.ttf-parser.opt-level=3'
+            @{ Name = 'hot-dependencies'; Config = $hotConfig },
+            @{ Name = 'hot-dependencies-and-content'; Config = $hotConfig + @(
+              '--config', 'profile.ci.package.image.opt-level=3',
+              '--config', 'profile.ci.package.markdown.opt-level=3'
             ) }
           )
           $measurements = @()
@@ -110,7 +114,7 @@ jobs:
             foreach ($iteration in 1..2) {
               Write-Output "PROFILE_TEST $($variant.Name) iteration=$iteration"
               $watch.Restart()
-              & cargo @cargoArguments
+              & cargo @cargoArguments --no-fail-fast --retries 0 --no-tests fail
               if ($LASTEXITCODE -ne 0) { throw "Tests failed: $($variant.Name) iteration=$iteration" }
               $watch.Stop()
               $measurements += [ordered]@{ profile = $variant.Name; phase = 'tests'; iteration = $iteration; seconds = $watch.Elapsed.TotalSeconds }
