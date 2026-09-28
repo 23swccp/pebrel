@@ -687,6 +687,7 @@ impl NebulaWorkspace {
             .child(div().h_full().flex_1().min_w_0())
             .child(
                 title_bar_panel_controls()
+                    .gap(px(8.0))
                     .child(
                         toolbar_button(
                             "top-toggle-command-manager",

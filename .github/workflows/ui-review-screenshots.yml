@@ -1,11 +1,16 @@
 name: UI review screenshots
 
 on:
-  workflow_dispatch:
   push:
     branches: ["fix/desktop-ui-control-spacing"]
-  pull_request:
-    types: [opened, synchronize, reopened]
+    paths:
+      - nebula_app/src/gpui_shell/settings_pane.rs
+      - nebula_app/src/gpui_shell/settings_pane/design.rs
+      - nebula_app/src/gpui_shell/settings_pane/segmented.rs
+      - nebula_app/src/gpui_shell/widgets.rs
+      - nebula_app/src/gpui_shell/workspace/details_panel.rs
+      - nebula_app/src/gpui_shell/workspace/sidebar.rs
+      - nebula_app/src/gpui_shell/workspace/top_tabs.rs
 
 permissions:
   contents: read
@@ -410,7 +415,7 @@ jobs:
 
   publish-evidence:
     name: Publish UI evidence
-    if: always() && github.repository == 'WilliamWang1721/pebrel' && github.event_name == 'push'
+    if: success() && github.repository == 'WilliamWang1721/pebrel' && github.event_name == 'push'
     needs: native-ui
     runs-on: ubuntu-22.04
     concurrency:
@@ -424,13 +429,11 @@ jobs:
           persist-credentials: true
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: ui-review-windows
           path: ${{ runner.temp }}/ui-review-evidence/windows
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: ui-review-macos
           path: ${{ runner.temp }}/ui-review-evidence/macos
