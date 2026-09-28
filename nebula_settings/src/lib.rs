@@ -995,8 +995,8 @@ pub struct RuntimeSettings {
     pub multiline_paste_confirm: bool,
     /// 标签页关闭按钮（叉号）是否渲染：关 = 不渲染，仍可用中键关闭。
     pub tab_close_visible: bool,
-    /// 终端网络代理：新会话启动时把当前系统代理写入 HTTP_PROXY/HTTPS_PROXY。
-    /// 上游默认关 (false) —— fork 侧另起本地 commit 翻成默认开。
+    /// 新建本地终端是否把 Windows 系统代理写入代理环境变量。自定义代理地址
+    /// 不看这个开关：网络页填了地址就会写入新终端。默认关。已打开的会话不改。
     pub terminal_proxy: bool,
     pub powerline: bool,
     /// 默认 shell 的原始 id（`shell=` 原文：powershell/bash/cmd/pwsh/WSL

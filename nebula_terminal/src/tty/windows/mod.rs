@@ -383,6 +383,33 @@ function global:Get-NebulaBoolSetting {
     }
 }
 
+# cmd 不跑这段：它直接继承进程里的 http_proxy / https_proxy / all_proxy。
+# 这里按 PowerShell 自己的版本写变量。5.x 的 Invoke-WebRequest 走 WebRequest；
+# 7.x 走 HttpClient，只认 -Proxy，不认 WebRequest 的默认代理。
+$pebrelProxyUrl = ''
+if ((Get-NebulaSetting 'ssh_proxy_mode' 'off') -eq 'custom') {
+    $pebrelProxyUrl = Get-NebulaSetting 'ssh_proxy_url' ''
+}
+if ($pebrelProxyUrl) {
+    $pebrelHttpProxy = $pebrelProxyUrl
+    if ($pebrelProxyUrl -match '^(?i)(?:socks5h?|socks)://(.+)$') {
+        $pebrelHttpProxy = 'http://' + $Matches[1]
+    } elseif ($pebrelProxyUrl -notmatch '^(?i)https?://') {
+        $pebrelHttpProxy = 'http://' + $pebrelProxyUrl
+    }
+    $env:http_proxy = $pebrelHttpProxy
+    $env:https_proxy = $pebrelHttpProxy
+    $env:all_proxy = $pebrelProxyUrl
+    $pebrelIsPwsh = ($PSVersionTable.PSEdition -eq 'Core') -or ($PSVersionTable.PSVersion.Major -ge 6)
+    try {
+        $PSDefaultParameterValues['Invoke-WebRequest:Proxy'] = $pebrelHttpProxy
+        $PSDefaultParameterValues['Invoke-RestMethod:Proxy'] = $pebrelHttpProxy
+        if (-not $pebrelIsPwsh) {
+            [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($pebrelHttpProxy, $true)
+        }
+    } catch {}
+}
+
 # 用户自己的提示符（$PROFILE 里的 oh-my-posh / starship / 手写 prompt）是不是
 # 已经就位。判据只能看函数体：PowerShell 内置 prompt 固定引用
 # $executionContext.SessionState.Path.CurrentLocation；而 oh-my-posh 那一类是经
@@ -1155,6 +1182,15 @@ mod test {
     #[test]
     fn powershell_cat_defaults_to_utf8() {
         assert!(NEBULA_PROMPT_PS1.contains("PSDefaultParameterValues['Get-Content:Encoding']"));
+    }
+
+    #[test]
+    fn powershell_startup_points_webrequest_at_the_custom_proxy() {
+        assert!(NEBULA_PROMPT_PS1.contains("ssh_proxy_mode"));
+        assert!(NEBULA_PROMPT_PS1.contains("$env:http_proxy"));
+        assert!(NEBULA_PROMPT_PS1.contains("$PSVersionTable.PSEdition"));
+        assert!(NEBULA_PROMPT_PS1.contains("[System.Net.WebRequest]::DefaultWebProxy"));
+        assert!(NEBULA_PROMPT_PS1.contains("Invoke-WebRequest:Proxy"));
     }
 
     /// gpui keymap 在传统 VT 路径把 Ctrl+Backspace 编成 \x17（Ctrl+W）；

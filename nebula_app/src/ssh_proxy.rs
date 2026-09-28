@@ -13,6 +13,7 @@
 //! SOCKS5 一律把主机名交给代理端解析（ATYP=0x03，字面 IP 除外）：访问境外
 //! 主机时本地 DNS 往往被污染或解析不到，本地解析等于代理白配。
 
+use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream as StdTcpStream};
 use std::pin::Pin;
@@ -595,6 +596,155 @@ pub fn probe_system_proxy() -> Option<(String, SystemProxySource)> {
     }
 }
 
+/// 新开的本地终端要带上的代理变量。
+///
+/// 模式是自定义、并且地址能解析成 HTTP 或 SOCKS 服务器时，直接写入这些变量，
+/// 不看 `use_system_proxy`。跟随系统只在开关打开且 `system_proxy_url` 有值时
+/// 写入。跳板和自定义命令无法表达成环境变量，返回空，终端照常直接启动。
+pub fn terminal_proxy_assignments(
+    mode: ProxyMode,
+    url: &str,
+    use_system_proxy: bool,
+    system_proxy_url: Option<&str>,
+) -> Vec<(String, String)> {
+    let chosen = match mode {
+        ProxyMode::Custom => env_proxy_url(url),
+        ProxyMode::System if use_system_proxy => system_proxy_url.and_then(env_proxy_url),
+        _ => None,
+    };
+    let Some(configured) = chosen else { return Vec::new() };
+    // cmd、Windows PowerShell 5、PowerShell 7 都读这组名字。
+    // http(s)_proxy 用 HTTP 形式：PowerShell 的 WebRequest / HttpClient 和多数
+    // Windows 程序不会走 socks://。all_proxy 保留用户选的协议，给 curl 用。
+    let http = http_proxy_form(&configured);
+    [("http_proxy", http.clone()), ("https_proxy", http), ("all_proxy", configured)]
+        .into_iter()
+        .map(|(name, value)| (name.to_owned(), value))
+        .collect()
+}
+
+/// 把 [`terminal_proxy_assignments`] 写进子进程环境。同名变量不分大小写替换，
+/// 避免刷新出来的 `http_proxy` 和这里的 `HTTP_PROXY` 各留一份。Windows 上同时
+/// 把变量名并进 `WSLENV`，WSL 标签才能在来宾里看到。返回是否写入了代理。
+pub fn apply_terminal_proxy_env(
+    env: &mut HashMap<String, String>,
+    mode: ProxyMode,
+    url: &str,
+    use_system_proxy: bool,
+    system_proxy_url: Option<&str>,
+) -> bool {
+    let pairs = terminal_proxy_assignments(mode, url, use_system_proxy, system_proxy_url);
+    if pairs.is_empty() {
+        return false;
+    }
+    let names: Vec<String> = pairs.iter().map(|(name, _)| name.clone()).collect();
+    for (name, value) in pairs {
+        env.retain(|key, _| !key.eq_ignore_ascii_case(&name));
+        env.insert(name, value);
+    }
+    #[cfg(windows)]
+    merge_proxy_wslenv(env, &names);
+    #[cfg(not(windows))]
+    let _ = names;
+    true
+}
+
+/// 读已保存的网络设置，给即将启动的本地终端补代理变量。已打开的会话不经过这里。
+pub fn apply_saved_terminal_proxy_env(env: &mut HashMap<String, String>) -> bool {
+    let settings = nebula_settings::RuntimeSettings::load();
+    let mode = ProxyMode::parse(settings.ssh_proxy_mode.settings_value());
+    let system_url = if mode == ProxyMode::System && settings.terminal_proxy {
+        probe_system_proxy().map(|(url, _)| url)
+    } else {
+        None
+    };
+    apply_terminal_proxy_env(
+        env,
+        mode,
+        &settings.ssh_proxy_url,
+        settings.terminal_proxy,
+        system_url.as_deref(),
+    )
+}
+
+/// 启动程序是 cmd、Windows PowerShell 5.x，还是 PowerShell 7。
+/// 三种都继承上面的环境变量；PowerShell 启动脚本再按版本补自己的代理对象。
+pub fn terminal_shell_kind(program: &str) -> TerminalShellKind {
+    let file = program.rsplit(['\\', '/']).next().unwrap_or(program);
+    let file = file.to_ascii_lowercase();
+    if file == "cmd" || file == "cmd.exe" {
+        return TerminalShellKind::Cmd;
+    }
+    if file == "pwsh" || file == "pwsh.exe" {
+        return TerminalShellKind::PowerShell7;
+    }
+    let path = program.to_ascii_lowercase();
+    if path.contains(r"powershell\7\") || path.contains("powershell/7/") {
+        return TerminalShellKind::PowerShell7;
+    }
+    if file == "powershell" || file == "powershell.exe" || path.contains(r"windowspowershell\") {
+        return TerminalShellKind::WindowsPowerShell;
+    }
+    TerminalShellKind::Other
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalShellKind {
+    Cmd,
+    WindowsPowerShell,
+    PowerShell7,
+    Other,
+}
+
+/// SOCKS URL 换成同一 host:port 的 HTTP 代理。混合端口两种都听；
+/// WebRequest 和 PowerShell 7 的 `-Proxy` 只接受 HTTP。
+fn http_proxy_form(url: &str) -> String {
+    for prefix in ["socks5h://", "socks5://", "socks://"] {
+        if url.len() >= prefix.len() && url[..prefix.len()].eq_ignore_ascii_case(prefix) {
+            return format!("http://{}", &url[prefix.len()..]);
+        }
+    }
+    url.to_owned()
+}
+
+/// 能交给 curl / git 的代理 URL。已带协议的原样保留（含账号）；裸 `host:port`
+/// 与 SSH 一样按 SOCKS5。解析失败、跳板、自定义命令都不是环境变量代理。
+fn env_proxy_url(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    match ProxyLink::parse(raw) {
+        Ok(ProxyLink::Server(_)) => {
+            Some(if raw.contains("://") { raw.to_owned() } else { format!("socks5://{raw}") })
+        },
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn merge_proxy_wslenv(env: &mut HashMap<String, String>, names: &[String]) {
+    const WSLENV: &str = "WSLENV";
+    let existing = env
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(WSLENV))
+        .map(|(_, value)| value.clone())
+        .unwrap_or_default();
+    let mut entries: Vec<String> =
+        existing.split(':').filter(|entry| !entry.is_empty()).map(str::to_owned).collect();
+    for name in names {
+        if entries
+            .iter()
+            .any(|entry| entry.split('/').next().unwrap_or(entry).eq_ignore_ascii_case(name))
+        {
+            continue;
+        }
+        entries.push(name.clone());
+    }
+    env.retain(|key, _| !key.eq_ignore_ascii_case(WSLENV));
+    env.insert(WSLENV.to_owned(), entries.join(":"));
+}
+
 /// HKCU\...\Internet Settings：`ProxyEnable` 非零时读 `ProxyServer` 与
 /// `ProxyOverride`。值的解析拆成纯函数，跨平台可测。
 #[cfg(windows)]
@@ -1142,5 +1292,152 @@ mod tests {
             let err = connect(&proxy, "vps.example.com", 22).await.unwrap_err();
             assert!(err.to_string().contains("407"), "{err}");
         });
+    }
+
+    fn assigned_proxy<'a>(pairs: &'a [(String, String)], name: &str) -> Option<&'a str> {
+        pairs
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    #[test]
+    fn custom_proxy_address_reaches_new_terminals_without_the_system_switch() {
+        let pairs =
+            terminal_proxy_assignments(ProxyMode::Custom, "socks5://127.0.0.1:7897", false, None);
+        assert_eq!(pairs.len(), 3);
+        assert_eq!(assigned_proxy(&pairs, "HTTP_PROXY"), Some("http://127.0.0.1:7897"));
+        assert_eq!(assigned_proxy(&pairs, "HTTPS_PROXY"), Some("http://127.0.0.1:7897"));
+        assert_eq!(assigned_proxy(&pairs, "ALL_PROXY"), Some("socks5://127.0.0.1:7897"));
+    }
+
+    #[test]
+    fn cmd_powershell5_and_powershell7_are_distinct_and_all_inherit_proxy_variables() {
+        use super::TerminalShellKind;
+        assert_eq!(
+            terminal_shell_kind(r"C:\Windows\System32\cmd.exe"),
+            TerminalShellKind::Cmd
+        );
+        assert_eq!(
+            terminal_shell_kind(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+            TerminalShellKind::WindowsPowerShell
+        );
+        assert_eq!(
+            terminal_shell_kind(r"C:\Program Files\PowerShell\7\pwsh.exe"),
+            TerminalShellKind::PowerShell7
+        );
+        let pairs =
+            terminal_proxy_assignments(ProxyMode::Custom, "socks5://127.0.0.1:7890", false, None);
+        for kind in [
+            TerminalShellKind::Cmd,
+            TerminalShellKind::WindowsPowerShell,
+            TerminalShellKind::PowerShell7,
+        ] {
+            let _ = kind;
+            assert_eq!(assigned_proxy(&pairs, "http_proxy"), Some("http://127.0.0.1:7890"));
+            assert_eq!(assigned_proxy(&pairs, "all_proxy"), Some("socks5://127.0.0.1:7890"));
+        }
+    }
+
+    #[test]
+    fn system_proxy_switch_does_not_gate_a_custom_address() {
+        let custom = terminal_proxy_assignments(
+            ProxyMode::Custom,
+            "http://127.0.0.1:8080",
+            false,
+            Some("http://system:1"),
+        );
+        assert!(custom.iter().all(|(_, value)| value == "http://127.0.0.1:8080"));
+        assert!(
+            terminal_proxy_assignments(
+                ProxyMode::System,
+                "http://127.0.0.1:8080",
+                false,
+                Some("http://system:1"),
+            )
+            .is_empty()
+        );
+        let system = terminal_proxy_assignments(
+            ProxyMode::System,
+            "http://saved:1",
+            true,
+            Some("http://system:9"),
+        );
+        assert!(system.iter().all(|(_, value)| value == "http://system:9"));
+        assert!(terminal_proxy_assignments(ProxyMode::System, "", true, None).is_empty());
+        assert!(
+            terminal_proxy_assignments(
+                ProxyMode::Off,
+                "socks5://127.0.0.1:7890",
+                true,
+                Some("http://system:9"),
+            )
+            .is_empty()
+        );
+        assert!(
+            terminal_proxy_assignments(ProxyMode::Custom, "jump:bastion", false, None).is_empty()
+        );
+        assert!(
+            terminal_proxy_assignments(ProxyMode::Custom, "command:nc %h %p", false, None)
+                .is_empty()
+        );
+        assert!(terminal_proxy_assignments(ProxyMode::Custom, "   ", false, None).is_empty());
+        assert!(terminal_proxy_assignments(ProxyMode::Custom, "ftp://x", false, None).is_empty());
+    }
+
+    #[test]
+    fn bare_proxy_address_is_exposed_to_terminals_as_socks5() {
+        let pairs = terminal_proxy_assignments(ProxyMode::Custom, "127.0.0.1:7890", false, None);
+        assert_eq!(assigned_proxy(&pairs, "http_proxy"), Some("http://127.0.0.1:7890"));
+        assert_eq!(assigned_proxy(&pairs, "all_proxy"), Some("socks5://127.0.0.1:7890"));
+    }
+
+    #[test]
+    fn applying_proxy_env_replaces_existing_spellings_and_keeps_credentials() {
+        let mut env = HashMap::from([
+            ("http_proxy".to_owned(), "http://old:1".to_owned()),
+            ("Https_Proxy".to_owned(), "http://old:1".to_owned()),
+            ("WSLENV".to_owned(), "KEEP/p".to_owned()),
+        ]);
+        assert!(apply_terminal_proxy_env(
+            &mut env,
+            ProxyMode::Custom,
+            "socks5://user:p%40ss@127.0.0.1:7890",
+            false,
+            None,
+        ));
+        assert_eq!(env.keys().filter(|key| key.eq_ignore_ascii_case("http_proxy")).count(), 1);
+        assert_eq!(
+            env.iter().find(|(key, _)| key.eq_ignore_ascii_case("http_proxy")).unwrap().1,
+            "http://user:p%40ss@127.0.0.1:7890"
+        );
+        assert_eq!(
+            env.iter().find(|(key, _)| key.eq_ignore_ascii_case("all_proxy")).unwrap().1,
+            "socks5://user:p%40ss@127.0.0.1:7890"
+        );
+        #[cfg(windows)]
+        {
+            let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
+            assert!(wslenv.split(':').any(|entry| entry == "KEEP/p"));
+            assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("HTTP_PROXY")));
+            assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("HTTPS_PROXY")));
+            assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("ALL_PROXY")));
+        }
+        #[cfg(not(windows))]
+        assert_eq!(env.get("WSLENV").map(String::as_str), Some("KEEP/p"));
+    }
+
+    #[test]
+    fn closed_proxy_mode_does_not_rewrite_an_existing_terminal_environment() {
+        let mut env = HashMap::from([("WSLENV".to_owned(), "KEEP/p".to_owned())]);
+        assert!(!apply_terminal_proxy_env(
+            &mut env,
+            ProxyMode::Off,
+            "http://127.0.0.1:1",
+            true,
+            Some("http://system:9"),
+        ));
+        assert_eq!(env.len(), 1);
+        assert_eq!(env.get("WSLENV").map(String::as_str), Some("KEEP/p"));
     }
 }
