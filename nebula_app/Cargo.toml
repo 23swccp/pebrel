@@ -99,6 +99,7 @@ log = { version = "0.4", features = ["std", "serde"] }
 mlua.workspace = true
 notify = "8.0.0"
 parking_lot = "0.12.0"
+pebrel-mobile-link = { path = "../mobile/link", features = ["preview"] }
 polling = "3.11.0"
 # Markdown viewer: CommonMark + GFM (tables / task lists / strikethrough)
 # event parser; `display::markdown_view` renders the folded block AST.
@@ -241,12 +242,14 @@ windows-sys = { version = "0.59", features = [
     # gate ConnectNamedPipe/ReadFile/CreateNamedPipeW's OVERLAPPED/DACL params.
     "Win32_System_Pipes",
     "Win32_Storage_FileSystem",
+    "Win32_Storage_Packaging_Appx",
     # 剪贴板截图粘贴（clipboard::clipboard_image_png）：OpenClipboard/
     # GetClipboardData(CF_DIB) 与 GlobalLock/GlobalSize。
     "Win32_System_DataExchange",
     "Win32_System_Memory",
     "Win32_System_IO",
     "Win32_Security",
+    "Win32_Security_Authorization",
     "Win32_Security_Credentials",
     "Win32_Graphics_Gdi",
     "Win32_System_Diagnostics_ToolHelp",

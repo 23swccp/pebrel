@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::runtime_api::{ApiError, RuntimeDispatch};
+use crate::runtime_api::{ApiError, RuntimeCommand, RuntimeDispatch};
 
 #[derive(Clone, Debug)]
 enum ExecLocation {
@@ -35,6 +35,35 @@ pub(crate) struct PaneExecContext {
 }
 
 impl PaneExecContext {
+    pub(crate) fn for_git(mut self) -> Self {
+        // 手机没有凭据交互通道；保留宿主 SSH/credential 配置，但不弹出凭据窗口。
+        let vars = [
+            ("GIT_TERMINAL_PROMPT", "0"),
+            ("GCM_INTERACTIVE", "never"),
+            ("SSH_ASKPASS_REQUIRE", "never"),
+        ];
+        if matches!(self.location, ExecLocation::Wsl { .. }) {
+            let mut forwarded = self
+                .env
+                .get("WSLENV")
+                .cloned()
+                .or_else(|| std::env::var("WSLENV").ok())
+                .unwrap_or_default();
+            for (key, _) in vars {
+                if !forwarded.split(':').any(|entry| entry.split('/').next() == Some(key)) {
+                    if !forwarded.is_empty() {
+                        forwarded.push(':');
+                    }
+                    forwarded.push_str(key);
+                    forwarded.push_str("/u");
+                }
+            }
+            self.env.insert("WSLENV".into(), forwarded);
+        }
+        self.env.extend(vars.map(|(key, value)| (key.into(), value.into())));
+        self
+    }
+
     pub(crate) fn shell_program(&self) -> Option<&str> {
         self.shell_program.as_deref()
     }
@@ -226,17 +255,22 @@ fn build_command(
     Ok((command, execution))
 }
 
-pub(crate) fn spawn(
-    dispatch: Arc<RuntimeDispatch>,
-    context: PaneExecContext,
-    cwd: String,
-    argv: Vec<String>,
-    timeout_ms: u64,
-    max_output_bytes: usize,
-) {
+pub(crate) fn spawn(dispatch: Arc<RuntimeDispatch>, context: PaneExecContext, cwd: String) {
     let worker_dispatch = dispatch.clone();
     let result = std::thread::Builder::new().name("nebula-pane-exec".to_owned()).spawn(move || {
-        worker_dispatch.respond(execute(context, cwd, argv, timeout_ms, max_output_bytes));
+        let result = match &worker_dispatch.command {
+            RuntimeCommand::Exec { argv, timeout_ms, max_output_bytes, .. } => {
+                execute(context, cwd, argv.clone(), *timeout_ms, *max_output_bytes)
+            },
+            RuntimeCommand::Git { request, .. } => {
+                crate::runtime_api::git::execute(context, cwd, request)
+            },
+            _ => Err(ApiError::new(
+                "invalid_runtime_command",
+                "command does not own a process worker",
+            )),
+        };
+        worker_dispatch.respond(result);
     });
     if let Err(error) = result {
         dispatch.respond(Err(ApiError::new(
@@ -368,7 +402,7 @@ fn configure_process_group(command: &mut Command) {
 ///
 /// Pebrel 自己是 `windows_subsystem = "windows"` 的 GUI 进程（见 `main.rs`），
 /// **没有控制台**可给子进程继承；不抑制的话 Windows 会给每条 exec 命令分配一个
-/// 新控制台，而默认终端应用是 Windows Terminal 的机器上那就是**弹一整扇窗口**
+/// 新控制台，而默认终端应用会托管新控制台的机器上那就是**弹一整扇窗口**
 /// （同 [`crate::ssh_session`] 里 `ssh.exe -G` 那条注释说的现象）。
 ///
 /// exec 的 stdin 是 null、stdout/stderr 走管道，从头到尾没有交互，也就不需要
