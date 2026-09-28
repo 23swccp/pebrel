@@ -135,6 +135,8 @@ class ProhibitedNamesTests(unittest.TestCase):
             ("mobile/android/app/build.gradle.kts", 'implementation(project(":ghostty"))'),
             ("mobile/android/settings.gradle.kts", 'include(":app", ":ghostty")'),
             ("mobile/tools/generate_assets.py", 'root / "mobile/android/ghostty/UPSTREAM.json"'),
+            (".github/workflows/android-release.yml", "path: 'mobile/android/ghostty/build/upstream'"),
+            (".github/workflows/android-release.yml", "key: native-${{ hashFiles('mobile/android/ghostty/UPSTREAM.json') }}"),
             ("mobile/tools/generate_assets.py", 'notices / "Ghostty"'),
             ("mobile/tools/test_apk_audit.py", '"assets/licenses/Ghostty/Ghostty-MIT.txt": b"fixture"'),
             ("mobile/android/ghostty/src/main/cpp/bridge.h", '#include <ghostty/vt.h>'),
@@ -155,6 +157,7 @@ class ProhibitedNamesTests(unittest.TestCase):
     def test_mobile_reference_paths_do_not_exempt_ordinary_mentions(self) -> None:
         for path in (
             "mobile/tools/generate_assets.py", "mobile/android/app/build.gradle.kts",
+            ".github/workflows/android-release.yml",
             "mobile/android/ghostty/UPSTREAM.json", "mobile/ssh/licenses/SOURCE.json",
             "mobile/android/app/src/main/java/connection/SshSessionMode.kt",
         ):

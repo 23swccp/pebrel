@@ -119,7 +119,9 @@ def mobile_reference_remainder(path: str, text: str) -> str:
     if path == "mobile/android/third_party/reader-build/package-lock.json":
         # 图形算法依赖的完整包名不是同名终端产品；保留锁文件中的真实坐标。
         text = re.sub(r"\bd3-contour\b", "", text)
-    if path.startswith("mobile/tools/") or path == "mobile/android/app/build.gradle.kts":
+    if path.startswith("mobile/tools/") or path in {
+        "mobile/android/app/build.gradle.kts", ".github/workflows/android-release.yml",
+    }:
         for pattern in MOBILE_BUILD_REFERENCE_PATTERNS:
             text = pattern.sub("", text)
     if path in {"mobile/android/settings.gradle.kts", "mobile/android/app/build.gradle.kts"}:
