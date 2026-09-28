@@ -896,7 +896,7 @@ impl NebulaWorkspace {
                                 } else {
                                     this.sidebar_collapsed = !this.sidebar_collapsed;
                                 }
-                                this.sidebar_fold_armed = true;
+                                this.sidebar_fold_armed = !tab_reveal_instant(cx);
                                 cx.notify();
                             })),
                     )

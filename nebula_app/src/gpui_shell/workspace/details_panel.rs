@@ -327,42 +327,47 @@ impl NebulaWorkspace {
                 PanelView::Git => self.render_git_tree(window, cx),
             }
         };
-        div()
+        let band = v_flex()
+            .relative()
+            .w(px(width))
+            .h_full()
+            .pb(px(crate::gpui_shell::theme::PaneCardStyle::current(cx).margin.bottom))
+            .child(self.render_details_header(width, window, cx))
+            .child(div().flex_1().min_h_0().w_full().child(panel).with_animation(
+                ("details-content", self.details_panel.transition),
+                Animation::new(Duration::from_millis(140)).with_easing(ease_out_quint()),
+                |content, t| content.opacity(t),
+            ));
+        // Instant: both 240 ms translations are dropped and the band rests at
+        // its final width, so the panel appears in place instead of sliding.
+        let instant = tab_reveal_instant(cx);
+        let band: gpui::AnyElement = if instant {
+            band.into_any_element()
+        } else {
+            band.with_animation(
+                ("side-panel-push", open as usize),
+                Animation::new(Duration::from_millis(240)).with_easing(ease_out_quint()),
+                move |band, t| band.left(px(width * if open { 1.0 - t } else { t })),
+            )
+            .into_any_element()
+        };
+        let slot = div()
             .id("workspace-details-slot")
             .debug_selector(|| "workspace-details-slot".to_owned())
             .relative()
             .h_full()
             .flex_shrink_0()
-            .child(
-                div().size_full().overflow_hidden().bg(cx.theme().background).child(
-                    v_flex()
-                        .relative()
-                        .w(px(width))
-                        .h_full()
-                        .pb(px(crate::gpui_shell::theme::PaneCardStyle::current(cx).margin.bottom))
-                        .child(self.render_details_header(width, window, cx))
-                        .child(
-                            div().flex_1().min_h_0().w_full().child(panel).with_animation(
-                                ("details-content", self.details_panel.transition),
-                                Animation::new(Duration::from_millis(140))
-                                    .with_easing(ease_out_quint()),
-                                |content, t| content.opacity(t),
-                            ),
-                        )
-                        .with_animation(
-                            ("side-panel-push", open as usize),
-                            Animation::new(Duration::from_millis(240))
-                                .with_easing(ease_out_quint()),
-                            move |band, t| band.left(px(width * if open { 1.0 - t } else { t })),
-                        ),
-                ),
-            )
-            .with_animation(
+            .child(div().size_full().overflow_hidden().bg(cx.theme().background).child(band));
+        if instant {
+            slot.w(px(width)).into_any_element()
+        } else {
+            slot.with_animation(
                 ("side-panel-slide", open as usize),
                 Animation::new(Duration::from_millis(240)).with_easing(ease_out_quint()),
                 move |slot, t| slot.w(px(width * if open { t } else { 1.0 - t })),
             )
             .into_any_element()
+        }
     }
 
     pub(super) fn render_details_panel_resize_handle(

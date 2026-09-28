@@ -603,6 +603,16 @@ fn log_file_manager_spawn(kind: &str, path: &Path, result: std::io::Result<()>) 
 
 /// “在文件管理器中显示”与单纯打开路径不是一个动作。Windows 的 `/select,`
 /// 命令构造（引号只包路径，见 `platform::file_manager`）不在这里重复实现。
+/// Whether the user turned the slide animation off (`tab_reveal = instant`).
+/// Every sideways transition — tab make-way, the sidebar folding when the
+/// settings page opens or closes, reopening a panel — snaps instead of sliding.
+/// Falls back to sliding when settings are not loaded yet, matching the
+/// configured default.
+pub(super) fn tab_reveal_instant(cx: &App) -> bool {
+    cx.try_global::<crate::gpui_shell::config::Settings>()
+        .is_some_and(|settings| settings.tab_reveal == nebula_settings::TabRevealName::Instant)
+}
+
 pub(super) fn reveal_in_file_manager(path: &Path) {
     log_file_manager_spawn("reveal", path, crate::platform::file_manager::reveal(path));
 }
@@ -1256,7 +1266,7 @@ impl NebulaWorkspace {
         crate::gpui_shell::apply_app_icon(runtime.app_icon, cx);
         self.sidebar_width = runtime.sidebar_width;
         self.tabs_position = runtime.tabs_position;
-        self.sync_settings_layout();
+        self.sync_settings_layout(tab_reveal_instant(cx));
         self.sidebar_resizing = None;
         self.reveal_if_tray_disabled(cx);
         cx.notify();
@@ -1943,7 +1953,10 @@ impl NebulaWorkspace {
         view: crate::display::side_panel::PanelView,
         cx: &mut Context<Self>,
     ) {
-        self.side_panel_anim_armed = true;
+        // Instant: the panel lands (or disappears) without the slide.
+        if !tab_reveal_instant(cx) {
+            self.side_panel_anim_armed = true;
+        }
         self.side_panel.toggle(view);
         self.file_tree_menu = None;
         if !self.side_panel.open {
@@ -2356,7 +2369,7 @@ impl NebulaWorkspace {
             },
             PaletteAction::ToggleSidebar => {
                 self.sidebar_collapsed = !self.sidebar_collapsed;
-                self.sidebar_fold_armed = true;
+                self.sidebar_fold_armed = !tab_reveal_instant(cx);
                 self.focus_active(window, cx);
             },
             PaletteAction::OpenSettings => self.open_settings(window, cx),
@@ -3185,7 +3198,7 @@ impl Render for NebulaWorkspace {
                     return;
                 }
                 this.sidebar_collapsed = !this.sidebar_collapsed;
-                this.sidebar_fold_armed = true;
+                this.sidebar_fold_armed = !tab_reveal_instant(cx);
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &recipes::OpenLayoutRecipes, window, cx| {
