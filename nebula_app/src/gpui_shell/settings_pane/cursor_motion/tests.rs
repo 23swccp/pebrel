@@ -5,9 +5,13 @@ fn reveal_cursor_motion(window: &mut gpui::VisualTestContext) {
     window.update(|window, cx| {
         let _ = window.draw(cx);
     });
+    // Center the control from its current layout, independent of preceding settings rows.
+    let bounds = window.debug_bounds("settings-select-cursor_motion").unwrap();
+    let viewport = window.update(|window, _| window.viewport_size());
+    let position = gpui::point(viewport.width / 2.0, viewport.height / 2.0);
     window.simulate_event(gpui::ScrollWheelEvent {
-        position: gpui::point(px(500.0), px(400.0)),
-        delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.0), px(-500.0))),
+        position,
+        delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.0), position.y - bounds.center().y)),
         touch_phase: gpui::TouchPhase::Moved,
         modifiers: Default::default(),
     });
@@ -15,7 +19,7 @@ fn reveal_cursor_motion(window: &mut gpui::VisualTestContext) {
         let _ = window.draw(cx);
     });
     let bounds = window.debug_bounds("settings-select-cursor_motion").unwrap();
-    assert!(bounds.top() > px(0.0) && bounds.bottom() < px(800.0));
+    assert!(bounds.top() > px(0.0) && bounds.bottom() < viewport.height, "{bounds:?}");
 }
 
 #[gpui::test]
