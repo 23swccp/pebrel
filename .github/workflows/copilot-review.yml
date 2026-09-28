@@ -1,4 +1,4 @@
-name: Copilot review after CI
+name: AI review after CI
 
 on:
   workflow_run:
@@ -24,7 +24,7 @@ permissions:
 # A pending event may be replaced. Every run scans eligible open PRs, so the
 # retained event still evaluates all PRs, and only one request writer runs at once.
 concurrency:
-  group: copilot-first-review
+  group: ai-first-review
   cancel-in-progress: false
 
 jobs:
@@ -34,11 +34,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/github-script@v7
+        env:
+          COPILOT_REVIEW_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN }}
+          CODERABBIT_FALLBACK_ENABLED: ${{ vars.CODERABBIT_FALLBACK_ENABLED }}
         with:
           retries: 0
           script: |
-            const marker = 'copilot-review-requested';
+            const marker = 'ai-review-requested';
+            const previousMarker = 'copilot-review-requested';
             const bot = 'copilot-pull-request-reviewer[bot]';
+            const fallbackBot = 'coderabbitai[bot]';
             const same = (a, b) => a?.toLowerCase() === b?.toLowerCase();
             const report = (number, text) => core.info(`#${number}: ${text}`);
             const eligible = pr => pr.state === 'open' && pr.draft === false &&
@@ -56,16 +61,46 @@ jobs:
               });
             }
             const policies = new Map();
+            let reviewer;
+            const provider = async () => {
+              if (!reviewer) {
+                const token = process.env.COPILOT_REVIEW_TOKEN;
+                if (!token) throw new Error('Missing dedicated COPILOT_REVIEW_TOKEN secret');
+                reviewer = new github.constructor({auth: token, retry: {enabled: false}});
+                const user = (await reviewer.rest.users.getAuthenticated()).data;
+                if (!same(user.login, context.repo.owner)) throw new Error('Review token must belong to the repository owner');
+              }
+              // This account endpoint is also used by GitHub's Copilot clients.
+              // Unknown or changed responses stop requests; never infer exhaustion
+              // from an authentication failure, a rate limit, or a network error.
+              const data = (await reviewer.request('GET /copilot_internal/user')).data;
+              const quota = data.quota_snapshots?.premium_interactions;
+              if (!quota || typeof quota.unlimited !== 'boolean' ||
+                  !Number.isFinite(quota.quota_remaining) || quota.quota_remaining < 0 ||
+                  !Number.isFinite(Date.parse(quota.timestamp_utc)) ||
+                  Math.abs(Date.now() - Date.parse(quota.timestamp_utc)) > 5 * 60 * 1000) {
+                throw new Error('Copilot allowance is missing, stale or unrecognized; no review requested');
+              }
+              if (quota.overage_permitted !== false) {
+                throw new Error('Paid overage must remain disabled before automated requests');
+              }
+              core.info(`Copilot allowance remaining: ${quota.quota_remaining}; reset: ${data.quota_reset_date_utc}`);
+              if (quota.unlimited || quota.quota_remaining > 0) return 'copilot';
+              if (process.env.CODERABBIT_FALLBACK_ENABLED !== 'true') {
+                throw new Error('Copilot exhausted; CodeRabbit installation must be verified before enabling fallback');
+              }
+              return 'coderabbit';
+            };
             for (const pr of pulls) {
               const number = pr.number;
               if (!eligible(pr)) { report(number, 'Owner, bot, draft or closed PR; skipped.'); continue; }
               const args = {...context.repo, pull_number: number};
-              const claimed = item => item.labels.some(label => label.name === marker) ||
+              const claimed = item => item.labels.some(label => [marker, previousMarker].includes(label.name)) ||
                 item.requested_reviewers.some(user => same(user.login, bot));
               if (claimed(pr)) { report(number, 'Review already requested; skipped.'); continue; }
               const reviews = await github.paginate(github.rest.pulls.listReviews, {...args, per_page: 100});
-              if (reviews.some(review => same(review.user?.login, bot))) {
-                report(number, 'Copilot has already reviewed this PR; manual re-review only.'); continue;
+              if (reviews.some(review => [bot, fallbackBot].some(login => same(review.user?.login, login)))) {
+                report(number, 'An AI reviewer has already reviewed this PR; manual re-review only.'); continue;
               }
               if (!policies.has(pr.base.ref)) {
                 const rules = await github.paginate('GET /repos/{owner}/{repo}/rules/branches/{branch}', {
@@ -88,6 +123,7 @@ jobs:
                   matching[0]?.conclusion === 'success';
               });
               if (!passed) { report(number, 'Required CI incomplete or unsuccessful; deferred.'); continue; }
+              const selected = await provider();
               // Guard a push, draft conversion or close racing the checks above.
               const current = (await github.rest.pulls.get(args)).data;
               if (!eligible(current) || current.head.sha !== ref || current.base.ref !== pr.base.ref || claimed(current)) {
@@ -97,8 +133,15 @@ jobs:
               // On a timeout/error leave the claim in place: a maintainer must inspect
               // the result before manually re-requesting, preventing quota retry loops.
               await github.rest.issues.addLabels({
-                ...context.repo, issue_number: number, labels: [marker],
+                ...context.repo, issue_number: number, labels: [marker, `${selected}-review-requested`],
               });
-              await github.rest.pulls.requestReviewers({...args, reviewers: [bot]});
-              report(number, `Requested first Copilot review after ${required.length} required checks passed.`);
+              if (selected === 'copilot') {
+                await reviewer.rest.pulls.requestReviewers({...args, reviewers: [bot]});
+              } else {
+                await reviewer.rest.issues.createComment({
+                  ...context.repo, issue_number: number,
+                  body: '@coderabbitai review',
+                });
+              }
+              report(number, `Requested first ${selected} review after ${required.length} required checks passed.`);
             }

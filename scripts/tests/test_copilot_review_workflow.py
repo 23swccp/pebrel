@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,16 +12,14 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNNER = r'''
 const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
 const writes = [], logs = [];
+process.env.COPILOT_REVIEW_TOKEN = input.missingToken ? '' : 'fixture-token';
+process.env.CODERABBIT_FALLBACK_ENABLED = input.fallbackEnabled ? 'true' : 'false';
 const list = () => {}, listReviews = () => {}, listForRef = () => {};
 const github = {
   rest: {
     pulls: {
       list, listReviews,
       get: async () => ({data: input.current || input.pr}),
-      requestReviewers: async value => {
-        writes.push(['request', value]);
-        if (input.requestError) throw new Error('request failed');
-      },
     },
     checks: {listForRef},
     issues: {addLabels: async value => {
@@ -38,6 +37,29 @@ const github = {
     }
     throw new Error('unexpected API');
   },
+};
+const reviewer = {
+  rest: {
+    users: {getAuthenticated: async () => ({data: {login: input.tokenOwner || 'owner'}})},
+    pulls: {requestReviewers: async value => {
+      writes.push(['request', value]);
+      if (input.requestError) throw new Error('request failed');
+    }},
+    issues: {createComment: async value => writes.push(['fallback', value])},
+  },
+  request: async () => {
+    if (input.quotaError) throw new Error('quota API failed');
+    return {data: {quota_snapshots: {premium_interactions: input.quota || {
+      unlimited: false, quota_remaining: 100, overage_permitted: false,
+      timestamp_utc: new Date().toISOString(),
+    }}}};
+  },
+};
+github.constructor = class {
+  constructor({auth}) {
+    if (auth !== 'fixture-token') throw new Error('Wrong credential');
+    return reviewer;
+  }
 };
 const context = {repo: {owner: 'owner', repo: 'project'}, eventName: input.event || 'workflow_run',
   payload: {inputs: {pull_number: input.number || '7'}}};
@@ -149,9 +171,65 @@ class CopilotReviewWorkflowTests(unittest.TestCase):
         data['number'] = '7; arbitrary code'
         self.assertEqual(self.run_gate(data)['error'], 'Invalid PR number')
 
+    def test_quota_exhaustion_uses_only_enabled_coderabbit(self):
+        data = self.fixture()
+        data['quota'] = {'unlimited': False, 'quota_remaining': 0, 'overage_permitted': False,
+                         'timestamp_utc': datetime.now(timezone.utc).isoformat()}
+        self.assertEqual(self.run_gate(data)['writes'], [])
+        data['fallbackEnabled'] = True
+        result = self.run_gate(data)
+        self.assertEqual([row[0] for row in result['writes']], ['claim', 'fallback'])
+        self.assertEqual(result['writes'][1][1]['body'], '@coderabbitai review')
+
+    def test_quota_errors_stale_data_paid_overage_and_wrong_identity_fail_closed(self):
+        for extra in ({'quotaError': True}, {'tokenOwner': 'other'},
+                      {'quota': {'unlimited': False, 'quota_remaining': -1}},
+                      {'quota': {'unlimited': False, 'quota_remaining': 10,
+                                 'overage_permitted': True, 'timestamp_utc': '2020-01-01T00:00:00Z'}}):
+            with self.subTest(extra=extra):
+                data = {**self.fixture(), **extra, 'fallbackEnabled': True}
+                result = self.run_gate(data)
+                self.assertEqual(result['writes'], [])
+                self.assertIn('error', result)
+
+    def test_paid_overage_or_stale_allowance_never_routes_to_either_bot(self):
+        for quota in (
+            {'unlimited': False, 'quota_remaining': 50, 'overage_permitted': True,
+             'timestamp_utc': datetime.now(timezone.utc).isoformat()},
+            {'unlimited': False, 'quota_remaining': 0, 'overage_permitted': False,
+             'timestamp_utc': '2020-01-01T00:00:00Z'},
+        ):
+            data = {**self.fixture(), 'quota': quota, 'fallbackEnabled': True}
+            self.assertEqual(self.run_gate(data)['writes'], [])
+
+    def test_missing_user_token_does_not_spend_or_claim(self):
+        result = self.run_gate({**self.fixture(), 'missingToken': True})
+        self.assertEqual(result['writes'], [])
+        self.assertIn('Missing dedicated', result['error'])
+
+    def test_user_token_has_no_ci_reading_methods(self):
+        # The two clients deliberately expose disjoint APIs in the fixture.
+        result = self.run_gate(self.fixture())
+        self.assertEqual([row[0] for row in result['writes']], ['claim', 'request'])
+        self.assertNotIn('github-token: ${{ secrets.', self.workflow)
+
+    def test_available_copilot_does_not_trigger_enabled_fallback(self):
+        result = self.run_gate({**self.fixture(), 'fallbackEnabled': True})
+        self.assertEqual([row[0] for row in result['writes']], ['claim', 'request'])
+
+    def test_coderabbit_config_disables_independent_automatic_reviews(self):
+        config = (ROOT / '.coderabbit.yaml').read_text(encoding='utf-8')
+        for entry in ('enabled: false', 'auto_incremental_review: false', 'drafts: false', '- Kuddev'):
+            self.assertIn(entry, config)
+
+    def test_coderabbit_does_not_duplicate_previous_ai_review(self):
+        data = self.fixture()
+        data['reviews'] = [{'user': {'login': 'coderabbitai[bot]'}}]
+        self.assertEqual(self.run_gate(data)['writes'], [])
+
     def test_workflow_never_executes_fork_content_or_approves_merges(self):
         self.assertNotIn('actions/checkout', self.workflow)
-        self.assertNotIn('secrets.', self.workflow)
+        self.assertIn('secrets.COPILOT_REVIEW_TOKEN', self.workflow)
         self.assertNotIn('contents: write', self.workflow)
         self.assertNotIn('createReview', self.script)
         self.assertNotIn('synchronize', self.workflow)
