@@ -746,6 +746,7 @@ impl SettingsPane {
             "powerline" => flag!(powerline),
             "ghost" => flag!(ghost),
             "ai_toasts" => flag!(ai_toasts),
+            "ctrl_wheel_font_zoom" => flag!(ctrl_wheel_font_zoom),
             "notification_duration" => pick!(notification_duration),
             "cursor_motion" => pick!(cursor_motion),
             "cjk_bold_regular" => flag!(cjk_bold_regular),
