@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: e2604457
+          ref: e2604457ace0eaee8cd57d898afc3328f34edcc4
           persist-credentials: false
       - uses: actions/github-script@v7
         with:
