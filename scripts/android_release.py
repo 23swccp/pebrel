@@ -98,7 +98,7 @@ def package(version: str, commit: str, sdk: Path, output: Path, report: Path) ->
     native = verify_native(apk)
     verify_relay(apk, commit)
     tests = {
-        "unit": test_summary(app / "test-results/testPreviewUnitTest"),
+        "unit": test_summary(app / "test-results/testDebugUnitTest"),
         "instrumented": test_summary(app / "outputs/androidTest-results/connected"),
     }
     output.mkdir(parents=True, exist_ok=True)

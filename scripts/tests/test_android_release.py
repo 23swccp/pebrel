@@ -101,7 +101,7 @@ class AndroidReleaseTests(unittest.TestCase):
         self.assertIn("uses: ./.github/workflows/android-release.yml", workflow)
         self.assertIn("needs: [prepare, linux, macos, windows, windows-arm64, android]", workflow)
         self.assertIn("release-dist/*.apk", workflow)
-        for required in (":app:testPreviewUnitTest", ":app:lintPreview", ":app:assemblePreview",
+        for required in (":app:testDebugUnitTest", ":app:lintPreview", ":app:assemblePreview",
                          ":app:connectedPreviewAndroidTest", "--commit", "stable-package-android",
                          "stable-evidence-android", "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"):
             self.assertIn(required, android_workflow)

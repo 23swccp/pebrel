@@ -32,9 +32,16 @@ ABIs and the two embedded Linux relay binaries from the same source commit.
 Native musl relay builds retain systemd/OpenRC portability without substituting
 old deployment assets. Reuse existing native composition and relay validators.
 
-Run Preview unit tests and lint, then exercise the optimized APK's terminal and
+Run the complete debug unit-test suite and Preview lint, then exercise the optimized APK's terminal and
 selected real OpenSSH/SFTP paths on an x86_64 emulator. Persistent-session tools
 and optical QR pairing remain separate acceptance scenarios.
+
+Compose JVM tests use the existing debug-only test Activity manifest. The first
+hosted attempt ran them as Preview and 50 tests failed before UI assertions with
+`Unable to resolve activity` for `androidx.activity.ComponentActivity`. Run the
+same complete unit-test sources under debug; keep native instrumentation on the
+optimized Preview APK. Adding the test Activity to the distributed Preview would
+unnecessarily change its manifest.
 
 Collect the APK only after checks pass. Verify the compiled package name,
 incremented version, signer, archive alignment and both test reports. Bind the

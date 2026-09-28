@@ -132,10 +132,10 @@ jobs:
           pattern: android-relay-*
           merge-multiple: true
           path: mobile/android/app/build/generated/nativeRelayAssets/native-relay
-      - name: Build and test the optimized Preview variant
+      - name: Run unit tests and build the optimized Preview variant
         run: |
           gradle --no-daemon -p mobile/android \
-            :app:testPreviewUnitTest :app:lintPreview \
+            :app:testDebugUnitTest :app:lintPreview \
             :app:assemblePreview :app:assemblePreviewAndroidTest
       - name: Prepare the isolated OpenSSH fixture
         run: |
