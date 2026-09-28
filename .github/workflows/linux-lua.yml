@@ -1,5 +1,5 @@
 name: Full native tests
-run-name: Windows profile comparison (diagnostic branch)
+run-name: Windows full-suite profile comparison (diagnostic branch)
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
   # 仅此诊断分支手动运行，不替代 PR 的完整原生验证，也不回写编译缓存。
   profile-benchmark:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics_run == 'profile-benchmark' }}
-    name: Windows hot-dependency profile comparison
+    name: Windows full-suite content profile comparison
     runs-on: windows-2022
     timeout-minutes: 45
     env:
@@ -76,32 +76,22 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $names = @(
-            'fractional_scale_sizes_are_exact_and_have_no_color_overshoot',
-            'vector_sourced_logos_keep_color_and_antialiased_edges_at_tab_sizes',
-            'sidebar_logos_share_only_identical_theme_pixels_at_each_dpi',
-            'large_document_is_bounded_before_ast_construction_and_partial_math_is_literal',
-            'theme_editor_save_only_forks_a_non_active_custom_template_without_publishing_it'
-          )
-          $filter = ($names | ForEach-Object { "test($_)" }) -join ' | '
           $common = @('nextest', 'run', '--config', '.github/ci-profile.toml',
             '--cargo-profile', 'ci', '--locked', '--workspace', '--features',
-            'nebula/gpui-test-support', '--filterset', $filter)
-          $hotConfig = @(
-            '--config', 'profile.ci.package.resvg.opt-level=3',
-            '--config', 'profile.ci.package.rustybuzz.opt-level=3',
-            '--config', 'profile.ci.package.taffy.opt-level=3',
-            '--config', 'profile.ci.package.ttf-parser.opt-level=3'
-          )
+            'nebula/gpui-test-support', '--timings')
           $variants = @(
             @{ Name = 'baseline'; Config = @() },
-            @{ Name = 'hot-dependencies'; Config = $hotConfig },
-            @{ Name = 'hot-dependencies-and-content'; Config = $hotConfig + @(
+            @{ Name = 'content-only'; Config = @(
               '--config', 'profile.ci.package.image.opt-level=3',
               '--config', 'profile.ci.package.markdown.opt-level=3'
             ) }
           )
           $measurements = @()
+          # 先量缓存中不再复用的工作区产物，后续缓存裁剪依据真实字节而非命中标记。
+          Get-ChildItem target/ci -Recurse -File |
+            Group-Object Extension |
+            ForEach-Object { [ordered]@{ extension = $_.Name; files = $_.Count; bytes = ($_.Group | Measure-Object Length -Sum).Sum } } |
+            ConvertTo-Json -Depth 4
           foreach ($variant in $variants) {
             $cargoArguments = $common + $variant.Config
             Write-Output "PROFILE_BUILD $($variant.Name)"
@@ -110,14 +100,27 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $($variant.Name)" }
             $watch.Stop()
             $measurements += [ordered]@{ profile = $variant.Name; phase = 'compile'; seconds = $watch.Elapsed.TotalSeconds }
-            # 分开记录编译与执行；重复一次显示波动，不把一次最快值当作稳定收益。
-            foreach ($iteration in 1..2) {
-              Write-Output "PROFILE_TEST $($variant.Name) iteration=$iteration"
+            # 完整运行同一套测试，不用五个样本推断整轮收益；断言和隔离模型保持不变。
+            foreach ($iteration in 1) {
+              Write-Output "PROFILE_TEST $($variant.Name) full-suite iteration=$iteration"
               $watch.Restart()
               & cargo @cargoArguments --no-fail-fast --retries 0 --no-tests fail
               if ($LASTEXITCODE -ne 0) { throw "Tests failed: $($variant.Name) iteration=$iteration" }
               $watch.Stop()
               $measurements += [ordered]@{ profile = $variant.Name; phase = 'tests'; iteration = $iteration; seconds = $watch.Elapsed.TotalSeconds }
+            }
+            $extraChecks = @(
+              @{ Name = 'doctests'; Args = @('test', '--config', '.github/ci-profile.toml', '--profile', 'ci', '--locked', '--workspace', '--features', 'nebula/gpui-test-support', '--doc') },
+              @{ Name = 'product-check'; Args = @('check', '--config', '.github/ci-profile.toml', '--profile', 'ci', '--locked', '-p', 'nebula', '--bin', 'pebrel', '--features', 'gpui-shell') }
+            )
+            foreach ($check in $extraChecks) {
+              $checkArguments = $check.Args + $variant.Config
+              Write-Output "PROFILE_CHECK $($variant.Name) $($check.Name)"
+              $watch.Restart()
+              & cargo @checkArguments
+              if ($LASTEXITCODE -ne 0) { throw "Check failed: $($variant.Name) $($check.Name)" }
+              $watch.Stop()
+              $measurements += [ordered]@{ profile = $variant.Name; phase = $check.Name; seconds = $watch.Elapsed.TotalSeconds }
             }
           }
           $json = $measurements | ConvertTo-Json -Depth 4
