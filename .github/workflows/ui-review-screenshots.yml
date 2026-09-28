@@ -1,11 +1,14 @@
 name: UI review screenshots
 
 on:
-  workflow_dispatch:
   push:
     branches: ["codex/dialog-keyboard-shortcuts"]
-  pull_request:
-    types: [opened, synchronize, reopened]
+    paths:
+      - nebula_app/src/display/keymap.rs
+      - nebula_app/src/gpui_shell/prelude.rs
+      - nebula_app/src/gpui_shell/settings_pane/keymap.rs
+      - nebula_app/i18n/en-US.json
+      - nebula_app/i18n/zh-CN.json
 
 permissions:
   contents: read
@@ -410,7 +413,7 @@ jobs:
 
   publish-evidence:
     name: Publish UI evidence
-    if: always() && github.repository == 'WilliamWang1721/pebrel' && github.event_name == 'push'
+    if: success() && github.repository == 'WilliamWang1721/pebrel' && github.event_name == 'push'
     needs: native-ui
     runs-on: ubuntu-22.04
     concurrency:
@@ -424,13 +427,11 @@ jobs:
           persist-credentials: true
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: ui-review-windows
           path: ${{ runner.temp }}/ui-review-evidence/windows
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: ui-review-macos
           path: ${{ runner.temp }}/ui-review-evidence/macos
