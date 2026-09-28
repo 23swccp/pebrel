@@ -28,10 +28,38 @@ permissions:
 
 jobs:
   windows-diagnostics:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics_run != '' && inputs.windows_diagnostics_run != 'profile-benchmark' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics_run != '' && inputs.windows_diagnostics_run != 'profile-benchmark' && inputs.windows_diagnostics_run != 'copilot-gate-check' }}
     uses: ./.github/workflows/windows-conformance.yml
     with:
       runtime_run: ${{ inputs.windows_diagnostics_run }}
+
+  # Validate the committed candidate using the normal Actions token. No fork code.
+  copilot-gate-check:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_diagnostics_run == 'copilot-gate-check' }}
+    name: Verify Copilot requester permissions after CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e2604457
+          persist-credentials: false
+      - uses: actions/github-script@v7
+        with:
+          retries: 0
+          script: |
+            const fs = require('node:fs');
+            const workflow = fs.readFileSync('.github/workflows/copilot-review.yml', 'utf8');
+            const script = workflow.split('          script: |\n')[1]
+              .split('\n').map(line => line.startsWith('            ') ? line.slice(12) : line).join('\n');
+            context.payload.inputs = {pull_number: '303'};
+            const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+            await new AsyncFunction('github', 'context', 'core', script)(github, context, core);
 
   # 仅此诊断分支手动运行，不替代 PR 的完整原生验证，也不回写编译缓存。
   profile-benchmark:
