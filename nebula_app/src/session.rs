@@ -470,7 +470,7 @@ mod tests {
             axis: SplitAxis::LeftRight,
             ratio_permille: 618,
             first: Box::new(LayoutSession::Pane {
-                custom_name: None,
+                custom_name: Some("前端".into()),
                 launch: None,
                 cwd: "D:/work".into(),
                 agent: Some(AgentSession {
@@ -483,7 +483,7 @@ mod tests {
                 axis: SplitAxis::TopBottom,
                 ratio_permille: 500,
                 first: Box::new(LayoutSession::Pane {
-                    custom_name: None,
+                    custom_name: Some("后端".into()),
                     launch: None,
                     cwd: "D:/logs".into(),
                     agent: None,

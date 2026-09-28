@@ -78,10 +78,12 @@ writing a new snapshot.
 
 ## Validation
 
-Validation covers real GPUI header mouse events, keyboard input, outside saving,
-saved-name and text undo/redo, cancellation, session restoration, alongside tab rename and
-session regression tests. The preview build still requires user visual testing
-for the native window, font rendering and display scaling.
+Permanent tests in `workspace/rename/tests.rs` exercise the actual pane headers
+and input controls: bounded saved-name history, repeated undo/redo, the transition
+to text history, cancellation, and non-empty names through snapshots, JSON and
+workspace restoration. The session schema round-trip fixture also carries named
+and automatic panes. Windows preview builds were used for manual interaction
+testing; the PR includes the title editor screenshot.
 
 ## Supersedes
 

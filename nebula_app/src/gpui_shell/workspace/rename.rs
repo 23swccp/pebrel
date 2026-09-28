@@ -1,6 +1,9 @@
 //! Inline title editing; pane identity is independent of tab position and shell titles.
 use super::*;
 
+#[cfg(all(test, feature = "gpui-test-support"))]
+mod tests;
+
 pub(super) fn normalized_name(buffer: &str) -> Option<String> {
     let trimmed = buffer.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
