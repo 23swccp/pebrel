@@ -492,7 +492,6 @@ impl WindowContext {
         pane_id: PaneId,
     ) -> Result<Pane, Box<dyn Error>> {
         crate::platform::environment::prepare_local_pty(&mut pty_config);
-        crate::ssh_proxy::apply_saved_terminal_proxy_env(&mut pty_config.env);
         // Per-pane identity for AI-CLI lifecycle hooks: nebula-hook.exe reads
         // it and stamps its pipe messages, so turn state lands on the right
         // tab dot (see `ai_hook`). The same call also exports the terminal

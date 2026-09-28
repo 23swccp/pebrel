@@ -13,6 +13,9 @@ pub(crate) fn prepare_local_pty(options: &mut nebula_terminal::tty::Options) {
     }
     #[cfg(not(windows))]
     let _ = options;
+    // 放在注册表快照之后：自定义代理地址，或已打开的系统代理，作为 pane 覆盖写进
+    // HTTP(S)_PROXY / ALL_PROXY。旧壳和 GPUI 都走这个入口，已打开的会话不改。
+    crate::ssh_proxy::apply_saved_terminal_proxy_env(&mut options.env);
 }
 
 #[cfg(windows)]

@@ -128,9 +128,6 @@ pub(super) fn local_options(
         log::warn!("Could not prepare shell integration: {error}");
     }
     crate::platform::environment::prepare_local_pty(&mut options);
-    // 放在环境重建之后：自定义代理地址，或已打开的系统代理，作为 pane 覆盖写进
-    // HTTP(S)_PROXY / ALL_PROXY，不被注册表快照冲掉。已打开的会话不改。
-    crate::ssh_proxy::apply_saved_terminal_proxy_env(&mut options.env);
     // WSL tab 的命令边界（OSC 133;D/A）与 cwd（OSC 7）：来宾登录 shell 默认
     // 不发，Agent 生命周期、目录树与 Git 视图都会失去来宾侧事实。只对
     // `wsl.exe` 启动生效，见 [`crate::shell_detect::wsl_cwd_report_env`]。
