@@ -148,11 +148,17 @@ fn save_outside(cx: &mut VisualTestContext) {
 }
 
 fn undo(cx: &mut VisualTestContext) {
-    cx.simulate_keystrokes(if cfg!(target_os = "macos") { "cmd-z" } else { "ctrl-z" });
+    cx.simulate_keystrokes(match crate::platform::Platform::current() {
+        crate::platform::Platform::MacOS => "cmd-z",
+        _ => "ctrl-z",
+    });
 }
 
 fn redo(cx: &mut VisualTestContext) {
-    cx.simulate_keystrokes(if cfg!(target_os = "macos") { "cmd-shift-z" } else { "ctrl-y" });
+    cx.simulate_keystrokes(match crate::platform::Platform::current() {
+        crate::platform::Platform::MacOS => "cmd-shift-z",
+        _ => "ctrl-y",
+    });
 }
 
 #[gpui::test]
