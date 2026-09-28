@@ -1,11 +1,10 @@
 name: UI review screenshots
 
 on:
-  workflow_dispatch:
   push:
     branches: ["codex/platform-shortcut-labels"]
-  pull_request:
-    types: [opened, synchronize, reopened]
+    paths:
+      - nebula_app/src/display/keymap.rs
 
 permissions:
   contents: read
@@ -241,7 +240,7 @@ jobs:
 
           focus_and_keys() {
             local keys="$1"
-            PID="$pid" KEYS="$keys" osascript <<'APPLESCRIPT' || true
+            PID="$pid" KEYS="$keys" osascript <<'APPLESCRIPT'
           set targetPid to (system attribute "PID") as integer
           set requestedKeys to system attribute "KEYS"
           tell application "System Events"
@@ -262,7 +261,7 @@ jobs:
           click_offset() {
             local x="$1"
             local y="$2"
-            PID="$pid" X="$x" Y="$y" osascript <<'APPLESCRIPT' || true
+            PID="$pid" X="$x" Y="$y" osascript <<'APPLESCRIPT'
           set targetPid to (system attribute "PID") as integer
           set clickX to (system attribute "X") as integer
           set clickY to (system attribute "Y") as integer
@@ -281,7 +280,7 @@ jobs:
           click_bottom() {
             local x="$1"
             local offset="$2"
-            PID="$pid" X="$x" OFFSET="$offset" osascript <<'APPLESCRIPT' || true
+            PID="$pid" X="$x" OFFSET="$offset" osascript <<'APPLESCRIPT'
           set targetPid to (system attribute "PID") as integer
           set clickX to (system attribute "X") as integer
           set bottomOffset to (system attribute "OFFSET") as integer
@@ -410,7 +409,7 @@ jobs:
 
   publish-evidence:
     name: Publish UI evidence
-    if: always() && github.repository == 'WilliamWang1721/pebrel' && github.event_name == 'push'
+    if: success() && github.repository == 'WilliamWang1721/pebrel' && github.event_name == 'push'
     needs: native-ui
     runs-on: ubuntu-22.04
     concurrency:
@@ -424,13 +423,11 @@ jobs:
           persist-credentials: true
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: ui-review-windows
           path: ${{ runner.temp }}/ui-review-evidence/windows
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: ui-review-macos
           path: ${{ runner.temp }}/ui-review-evidence/macos

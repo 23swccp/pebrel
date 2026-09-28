@@ -914,7 +914,7 @@ mod tests {
         }
     }
 
-    /// 超级键键帽随平台渲染：macOS 是 ⌘，其它平台是 Win。
+    /// Super 键标签按平台显示：macOS 是 Command，Windows 是 Win，Linux 是 Super。
     #[test]
     fn super_modifier_renders_per_platform() {
         let expected = if cfg!(target_os = "macos") {
