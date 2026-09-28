@@ -61,6 +61,7 @@ impl SettingsPane {
             Message::CloudScope,
         ];
         let progress = h_flex()
+            .flex_shrink_0()
             .w_full()
             .px_6()
             .py_4()
@@ -130,6 +131,7 @@ impl SettingsPane {
             l.text(title).to_owned()
         };
         let mut body = v_flex()
+            .flex_shrink_0()
             .w_full()
             .min_h(px(380.0))
             .p_6()
@@ -151,36 +153,43 @@ impl SettingsPane {
                     .child(caption(l.text(lead), cx).max_w(px(520.0))),
             );
         body = match step {
-            1 => body.child(v_flex().gap_2().children(PROVIDERS.into_iter().enumerate().map(
-                |(i, (protocol, nutstore, title, hint, icon))| {
-                    Button::new(("backup-provider", i))
-                        .debug_selector(move || format!("backup-provider-{i}"))
-                        .w_full()
-                        .h_auto()
-                        .py_3()
-                        .px_4()
-                        .justify_start()
-                        .ghost()
-                        .selected(provider(&self.backup_ui.draft) == title)
-                        .disabled(self.backup_busy)
-                        .child(Icon::default().path(icon).size(px(18.0)).flex_shrink_0())
-                        .child(
-                            v_flex()
-                                .flex_1()
-                                .min_w_0()
-                                .gap_1()
-                                .items_start()
-                                .child(div().text_size(px(14.0)).font_medium().child(l.text(title)))
-                                .child(caption(l.text(hint), cx)),
-                        )
-                        .when(provider(&self.backup_ui.draft) == title, |b| {
-                            b.child(Icon::default().path(icons::CHECK).size(px(16.0)))
-                        })
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.select_backup_protocol(protocol, nutstore, window, cx)
-                        }))
-                },
-            ))),
+            1 => body.child(v_flex().w_full().flex_shrink_0().gap_2().children(
+                PROVIDERS.into_iter().enumerate().map(
+                    |(i, (protocol, nutstore, title, hint, icon))| {
+                        Button::new(("backup-provider", i))
+                            .debug_selector(move || format!("backup-provider-{i}"))
+                            .w_full()
+                            .h_auto()
+                            .py_3()
+                            .px_4()
+                            .justify_start()
+                            .ghost()
+                            .selected(provider(&self.backup_ui.draft) == title)
+                            .disabled(self.backup_busy)
+                            .child(Icon::default().path(icon).size(px(18.0)).flex_shrink_0())
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .items_start()
+                                    .child(
+                                        div()
+                                            .text_size(px(14.0))
+                                            .font_medium()
+                                            .child(l.text(title)),
+                                    )
+                                    .child(caption(l.text(hint), cx)),
+                            )
+                            .when(provider(&self.backup_ui.draft) == title, |b| {
+                                b.child(Icon::default().path(icons::CHECK).size(px(16.0)))
+                            })
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.select_backup_protocol(protocol, nutstore, window, cx)
+                            }))
+                    },
+                ),
+            )),
             2 => {
                 body.child(self.backup_storage_fields(window.viewport_size().width < px(960.0), cx))
             },
@@ -245,6 +254,7 @@ impl SettingsPane {
             _ => Message::BackupFlowNext,
         };
         panel(cx)
+            .flex_shrink_0()
             .debug_selector(|| "backup-wizard".into())
             .child(progress)
             .child(body.children(self.backup_status_view(cx)))

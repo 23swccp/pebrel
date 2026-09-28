@@ -102,7 +102,9 @@ fn bounded_exchange(
         }
         pending = &pending[written..];
     }
-    stream.shutdown(Shutdown::Write)?;
+    // The newline frames the complete request. A fast peer may already have
+    // replied and closed here; shutting down the write half can then fail with
+    // NotConnected on macOS before we read its buffered response.
     let mut bytes = Vec::new();
     let mut buffer = [0; 4096];
     loop {
@@ -753,7 +755,11 @@ mod output_tests {
             let result = bounded_exchange(&endpoint, b"{}\n", Duration::from_secs(2));
             server.join().unwrap();
             if let Some(code) = expected_error {
-                assert_eq!(result.unwrap_err().downcast_ref::<CliError>().unwrap().code(), code);
+                let error = result.unwrap_err();
+                let response_error = error
+                    .downcast_ref::<CliError>()
+                    .unwrap_or_else(|| panic!("expected {code}, got {error:?}"));
+                assert_eq!(response_error.code(), code);
             } else {
                 assert_eq!(result.unwrap(), b"{\"ok\":true}");
             }

@@ -143,11 +143,21 @@ fn backup_drawer_keeps_scope_off_dashboard_and_cancel_discards_draft(
 
 #[gpui::test]
 fn backup_form_columns_and_password_group_follow_prototype(cx: &mut gpui::TestAppContext) {
+    check_backup_form_layout(cx, crate::display::UiLanguage::EnUs);
+}
+
+#[gpui::test]
+fn backup_form_columns_and_password_group_in_chinese(cx: &mut gpui::TestAppContext) {
+    check_backup_form_layout(cx, crate::display::UiLanguage::ZhCn);
+}
+
+fn check_backup_form_layout(cx: &mut gpui::TestAppContext, language: crate::display::UiLanguage) {
     cx.update(|cx| {
         gpui_component::init(cx);
         cx.set_reduce_motion(true);
         cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
     });
+    cx.update(|cx| cx.global_mut::<crate::gpui_shell::config::Settings>().ui_language = language);
     let mut pane = None;
     let (_, cx) = cx.add_window_view(|window, cx| {
         let view = cx.new(|cx| SettingsPane::new(window, cx));
@@ -159,10 +169,42 @@ fn backup_form_columns_and_password_group_follow_prototype(cx: &mut gpui::TestAp
         gpui_component::Root::new(view, window, cx)
     });
     let pane = pane.unwrap();
-    cx.simulate_resize(gpui::size(px(1280.0), px(1400.0)));
-    draw(cx);
-    click(cx, "backup-provider-1");
-    click(cx, "backup-next");
+    for width in [800.0, 1280.0] {
+        cx.update(|_, cx| {
+            pane.update(cx, |p, cx| {
+                p.backup_ui.step = 1;
+                cx.notify();
+            })
+        });
+        cx.simulate_resize(gpui::size(px(width), px(1400.0)));
+        draw(cx);
+        let folder = cx.debug_bounds("backup-provider-4").unwrap();
+        let next = cx.debug_bounds("backup-next").unwrap();
+        let wizard = cx.debug_bounds("backup-wizard").unwrap();
+        assert!(
+            next.bottom() <= wizard.bottom(),
+            "footer is clipped at {width}: {next:?}, {wizard:?}"
+        );
+        assert!(
+            folder.bottom() <= next.top(),
+            "storage choices overlap the footer at {width}: {folder:?}, {next:?}"
+        );
+        click(cx, "backup-provider-4");
+        assert_eq!(pane.read_with(cx, |p, _| p.backup_ui.draft.protocol), BackupProtocol::Folder);
+        click(cx, "backup-provider-1");
+        assert_eq!(
+            pane.read_with(cx, |p, _| view::provider(&p.backup_ui.draft)),
+            Message::CloudWebdav
+        );
+        click(cx, "backup-next");
+        assert_eq!(pane.read_with(cx, |p, _| p.backup_ui.step), 2);
+        assert_eq!(pane.read_with(cx, |p, _| p.backup_ui.draft.protocol), BackupProtocol::WebDav);
+        for selector in
+            ["backup-field-control-0", "backup-field-control-1", "backup-field-control-2"]
+        {
+            assert!(cx.debug_bounds(selector).is_some(), "missing {selector} at {width}");
+        }
+    }
     for width in [1280.0, 800.0] {
         cx.simulate_resize(gpui::size(px(width), px(1400.0)));
         draw(cx);
@@ -172,7 +214,11 @@ fn backup_form_columns_and_password_group_follow_prototype(cx: &mut gpui::TestAp
             ("backup-field-control-1", "backup-field-label-1"),
             ("backup-field-control-2", "backup-field-label-2"),
         ] {
-            let control = cx.debug_bounds(control).unwrap();
+            let control = cx.debug_bounds(control).unwrap_or_else(|| {
+                let state =
+                    pane.read_with(cx, |p, _| (p.backup_ui.step, p.backup_ui.draft.protocol));
+                panic!("missing {control} at width {width}, wizard state {state:?}")
+            });
             let label = cx.debug_bounds(label).unwrap();
             assert!((control.left() - first.left()).abs() <= px(1.0));
             assert!((control.right() - first.right()).abs() <= px(1.0));

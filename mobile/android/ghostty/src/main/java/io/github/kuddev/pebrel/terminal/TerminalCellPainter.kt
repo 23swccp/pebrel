@@ -63,7 +63,7 @@ internal object TerminalCellPainter {
     }
 }
 
-/** Blocks/box lines are cell geometry, not font artwork (including Claude's mascot). */
+/** Render block and box-drawing characters using cell geometry. */
 internal object TerminalGlyphs {
     fun draw(canvas: Canvas, paint: Paint, character: Char, x: Float, y: Float, w: Float, h: Float): Boolean {
         val code = character.code
