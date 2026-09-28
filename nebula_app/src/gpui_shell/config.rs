@@ -474,8 +474,8 @@ fn default_font_family() -> &'static str {
 ///
 /// 单独驻留而不是并入 [`Settings`]，因为生命周期不同：`Settings` 随设置页写入
 /// 反复重载，启动网格按定义只在开窗时生效一次，而 Lua 配置求值不该出现在每次
-/// 保存设置的路径上。取值复用主应用的发现与解析（`pebrel.lua` 优先于
-/// `pebrel.toml`，YAML 同路），因此 `pebrel config check` 认过的键在此同义。
+/// 保存设置的路径上。显式 `--config-file` 优先；否则复用主应用发现顺序（`pebrel.lua`
+/// 优先于 `pebrel.toml`，YAML 同路）和 `pebrel config check` 的同一解析器。
 #[derive(Default)]
 pub(crate) struct StartupWindow {
     pub dimensions: Option<crate::config::window::Dimensions>,
@@ -484,8 +484,8 @@ pub(crate) struct StartupWindow {
 impl Global for StartupWindow {}
 
 impl StartupWindow {
-    pub(crate) fn load() -> Self {
-        let Ok(Some(source)) = crate::config::source::discover(None) else {
+    pub(crate) fn load(config_file: Option<PathBuf>) -> Self {
+        let Ok(Some(source)) = crate::config::source::discover(config_file) else {
             return Self::default();
         };
         match crate::config::load_source(&source) {
@@ -861,6 +861,33 @@ mod tests {
     fn explicit_runtime_languages_resolve_without_reading_system_locale() {
         assert_eq!(resolve_ui_language(LanguagePref::ZhCn), UiLanguage::ZhCn);
         assert_eq!(resolve_ui_language(LanguagePref::EnUs), UiLanguage::EnUs);
+    }
+
+    #[test]
+    fn startup_window_uses_the_config_file_selected_by_cli() {
+        use clap::Parser as _;
+
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("selected.lua");
+        std::fs::write(
+            &path,
+            "local pebrel = require 'pebrel'\n\
+             local config = pebrel.config_builder()\n\
+             config.window = { dimensions = { columns = 123, lines = 37 } }\n\
+             return config\n",
+        )
+        .unwrap();
+        let options = crate::cli::Options::try_parse_from([
+            "pebrel",
+            "--config-file",
+            path.to_str().unwrap(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            StartupWindow::load(options.config_file).dimensions,
+            Some(Dimensions { columns: 123, lines: 37 })
+        );
     }
 
     /// 用户写在 `pebrel.lua` 里的 `config.window.dimensions` 必须真的决定启动

@@ -45,11 +45,12 @@ default canvas, not a user value.
 ## Decision
 
 `gpui_shell::config::StartupWindow` holds the startup grid and is loaded once in
-`init()` through `config::source::discover(None)` + `config::load_source` — the
-pair `pebrel config check` uses, so a key accepted there means the same thing
-here, and Lua, TOML and YAML share one path. `config::load` was not used: it
-takes `&mut Options`, and the shell's `init(cx: &App)` has no CLI state (see
-Consequences). Because the value is a grid (columns × lines) and not pixels,
+`init()` through `config::source::discover(config_file)` + `config::load_source` —
+the pair `pebrel config check` uses, so a key accepted there means the same thing
+here, and Lua, TOML and YAML share one parser. `main` forwards the selected
+`--config-file` path through `run_shell`; without that option, normal environment
+and file discovery still applies. Because the value is a grid (columns × lines)
+and not pixels,
 `prepare_initial_grid` multiplies it by the cell it measures in the window's own
 scale domain, so the result is correct at 100%, 125% and any other DPI without
 the shell knowing the scale factor. Unset config keeps the 116×30 built-in
@@ -91,9 +92,8 @@ shrinks the grid rather than pushing the window off screen.
   Discovery order stays `pebrel.lua` → `pebrel.toml` → YAML, so a Lua file
   shadows a TOML file for startup size exactly as it does for `config check`.
 - `init()` performs one synchronous config read plus possible Lua evaluation on
-  the main thread before the first window opens. It was already doing file IO
-  there for `Settings::load_with_runtime`; startup is the only place a window
-  geometry can be known before display.
+  the main thread before the first window opens. The explicit CLI path reaches
+  this one-time load; settings-page writes do not re-evaluate it.
 - A config file that fails to parse prints `[pebrel:gpui] failed to read window
   config …` to stderr and falls back to the built-in canvas; the shell still
   opens.
@@ -112,8 +112,8 @@ to `config.rs`.
 `StartupWindow` did not exist; it pins the Lua source → `dimensions()` link.
 `startup_grid_follows_window_dimensions` pins the three shell-side verdicts:
 unset → built-in canvas, configured → exact grid, below-minimum → clamped.
-Compile and test runs of the `gpui-test-support` cases happen in CI for the
-reason under Evidence.
+`startup_window_uses_the_config_file_selected_by_cli` covers CLI parsing through
+startup loading. Follow-up builds and tests run through the upstream PR Actions.
 
 ## Supersedes
 

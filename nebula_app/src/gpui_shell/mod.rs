@@ -82,6 +82,7 @@ pub fn run_shell(
     initial_cwd: Option<std::path::PathBuf>,
     initial_command: Option<crate::config::ui_config::Program>,
     shell_id: Option<String>,
+    config_file: Option<std::path::PathBuf>,
 ) {
     if crate::platform::CAPABILITIES.self_update_install {
         match crate::update_download::handoff::installation_in_progress() {
@@ -179,7 +180,7 @@ pub fn run_shell(
             let ai_events = crate::ai_hook::spawn_gpui_server();
             #[cfg(windows)]
             crate::ai_hook::spawn_config_guard();
-            init(cx);
+            init(cx, config_file);
             if initial_cwd.is_some()
                 || !crate::platform::startup::start_hidden(&nebula_settings::RuntimeSettings::load())
             {
@@ -191,7 +192,7 @@ pub fn run_shell(
 }
 
 /// 组件库/主题/快捷键/用户配置的一次性初始化。
-fn init(cx: &mut App) {
+fn init(cx: &mut App, config_file: Option<std::path::PathBuf>) {
     crate::platform::acrylic::init(cx);
     // 三端都注册内嵌 Maple：Linux/macOS 的系统等宽字体没有 NF 图标码点，
     // 侧栏与提示符会出方框；字形同源也是跨平台截图能互相比对的前提。
@@ -218,7 +219,7 @@ fn init(cx: &mut App) {
     let settings = config::Settings::load_with_runtime(theme, runtime);
     gpui_component::set_locale(settings.ui_language.gpui_component_locale());
     cx.set_global(settings);
-    cx.set_global(config::StartupWindow::load());
+    cx.set_global(config::StartupWindow::load(config_file));
     theme::apply_chrome_theme(cx);
     terminal::init(cx);
     workspace::init(cx);
