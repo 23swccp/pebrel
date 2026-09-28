@@ -32,6 +32,7 @@ impl server::Handler for Echo {
         assert_eq!(host, "127.0.0.1");
         assert_eq!(origin, "127.0.0.1");
         if port == 1 {
+            reply.reject(russh::ChannelOpenFailure::AdministrativelyProhibited).await;
             return Ok(());
         } // Exercise a real SSH channel-open rejection.
         reply.accept().await;

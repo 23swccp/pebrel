@@ -58,26 +58,39 @@ async fn bind_forward(
     let local_port = listener.local_addr()?.port();
     let task = tokio::spawn(async move {
         let mut connections = JoinSet::new();
+        let mut accept_error_logged = false;
         loop {
             tokio::select! {
                 accepted = listener.accept(), if connections.len() < MAX_CONNECTIONS => {
-                    let Ok((mut local, peer)) = accepted else { break };
-                    let session = session.clone();
-                    connections.spawn(async move {
-                        let channel = super::lifecycle::network(
-                            "port-forward channel",
-                            session.channel_open_direct_tcpip(
-                                Ipv4Addr::LOCALHOST.to_string(),
-                                u32::from(remote_port),
-                                peer.ip().to_string(),
-                                u32::from(peer.port()),
-                            ),
-                        )
-                        .await?;
-                        let mut remote = channel.into_stream();
-                        tokio::io::copy_bidirectional(&mut local, &mut remote).await?;
-                        Ok::<(), SessionError>(())
-                    });
+                    match accepted {
+                        Ok((mut local, peer)) => {
+                            accept_error_logged = false;
+                            let session = session.clone();
+                            connections.spawn(async move {
+                                let channel = super::lifecycle::network(
+                                    "port-forward channel",
+                                    session.channel_open_direct_tcpip(
+                                        Ipv4Addr::LOCALHOST.to_string(),
+                                        u32::from(remote_port),
+                                        peer.ip().to_string(),
+                                        u32::from(peer.port()),
+                                    ),
+                                )
+                                .await?;
+                                let mut remote = channel.into_stream();
+                                tokio::io::copy_bidirectional(&mut local, &mut remote).await?;
+                                Ok::<(), SessionError>(())
+                            });
+                        },
+                        Err(error) => {
+                            if !accept_error_logged {
+                                log::warn!("SSH port-forward listener accept failed; retrying: {error}");
+                                accept_error_logged = true;
+                            }
+                            // ponytail: retry at most once per second; add backoff if persistent errors warrant it.
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        },
+                    }
                 },
                 Some(result) = connections.join_next(), if !connections.is_empty() => {
                     match result {
