@@ -1314,10 +1314,7 @@ mod tests {
     #[test]
     fn cmd_powershell5_and_powershell7_are_distinct_and_all_inherit_proxy_variables() {
         use super::TerminalShellKind;
-        assert_eq!(
-            terminal_shell_kind(r"C:\Windows\System32\cmd.exe"),
-            TerminalShellKind::Cmd
-        );
+        assert_eq!(terminal_shell_kind(r"C:\Windows\System32\cmd.exe"), TerminalShellKind::Cmd);
         assert_eq!(
             terminal_shell_kind(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
             TerminalShellKind::WindowsPowerShell
