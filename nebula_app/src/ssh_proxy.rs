@@ -642,10 +642,8 @@ pub fn apply_terminal_proxy_env(
         env.retain(|key, _| !key.eq_ignore_ascii_case(&name));
         env.insert(name, value);
     }
-    #[cfg(windows)]
+    // 不按平台分叉：非 Windows 多一个 WSLENV 没有作用，但能少一个平台 cfg。
     merge_proxy_wslenv(env, &names);
-    #[cfg(not(windows))]
-    let _ = names;
     true
 }
 
@@ -722,7 +720,6 @@ fn env_proxy_url(raw: &str) -> Option<String> {
     }
 }
 
-#[cfg(windows)]
 fn merge_proxy_wslenv(env: &mut HashMap<String, String>, names: &[String]) {
     const WSLENV: &str = "WSLENV";
     let existing = env
@@ -1412,16 +1409,11 @@ mod tests {
             env.iter().find(|(key, _)| key.eq_ignore_ascii_case("all_proxy")).unwrap().1,
             "socks5://user:p%40ss@127.0.0.1:7890"
         );
-        #[cfg(windows)]
-        {
-            let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
-            assert!(wslenv.split(':').any(|entry| entry == "KEEP/p"));
-            assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("HTTP_PROXY")));
-            assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("HTTPS_PROXY")));
-            assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("ALL_PROXY")));
-        }
-        #[cfg(not(windows))]
-        assert_eq!(env.get("WSLENV").map(String::as_str), Some("KEEP/p"));
+        let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
+        assert!(wslenv.split(':').any(|entry| entry == "KEEP/p"));
+        assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("http_proxy")));
+        assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("https_proxy")));
+        assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("all_proxy")));
     }
 
     #[test]
