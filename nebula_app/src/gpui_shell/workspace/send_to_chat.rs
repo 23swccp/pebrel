@@ -179,7 +179,7 @@ impl NebulaWorkspace {
         let workspace = cx.entity().downgrade();
         items.push(
             PopupMenuItem::new(language.text(crate::i18n::Message::WorkspacePaneClose))
-                .icon(IconName::X)
+                .icon(IconName::Close)
                 .on_click(move |_, window, cx| {
                     let _ = workspace.update(cx, |workspace, cx| {
                         let Some((tab, pane)) = workspace.locate_pane(source_entity_id) else {
