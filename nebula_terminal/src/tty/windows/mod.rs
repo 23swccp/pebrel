@@ -1119,7 +1119,7 @@ fn nebula_default_shell(settings: NebulaRuntimeSettings) -> Shell {
             powershell_integration_args(
                 vec![
                     "-NoLogo".to_owned(),
-                    // Match the native Windows terminal path: do not silently
+                    // Match the native console launch path: do not silently
                     // skip the user's $PROFILE. Nebula's integration script is
                     // appended after PowerShell finishes its normal startup.
                 ],
