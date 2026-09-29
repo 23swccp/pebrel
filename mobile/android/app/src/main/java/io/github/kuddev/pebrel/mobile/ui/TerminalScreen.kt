@@ -100,7 +100,8 @@ fun DesktopTerminalScreen(desktop: DesktopWorkspace, pane: DesktopPane, reposito
     var focused by rememberSaveable(identity) { mutableStateOf(false) }
     var showPermission by remember(identity) { mutableStateOf(false) }
     var showDetails by remember(identity) { mutableStateOf(false) }
-    var wrapLines by rememberSaveable(identity) { mutableStateOf(true) }
+    // TUI 边框和光标属于桌面网格；手机重排只作为用户主动选择的阅读模式。
+    var wrapLines by rememberSaveable(identity) { mutableStateOf(false) }
     val enabled = desktop.allowInput && desktop.status == "ready"
     LaunchedEffect(enabled) { if (enabled) showPermission = false }
     val input = remember(identity, enabled, desktop.connectionGeneration) { repository.desktopInput(desktop.id, pane) }
