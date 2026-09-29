@@ -499,14 +499,11 @@ pub(super) fn helper_path() -> Option<PathBuf> {
 fn helper_path_from_exe(exe: &Path) -> Option<PathBuf> {
     let exe_dir = exe.parent()?;
     // 新包优先使用分类目录，旧同目录位置仅用于开发构建和兼容历史包。
-    let names = if cfg!(windows) {
-        ["pebrel-hook.exe", "nebula-hook.exe"]
-    } else {
-        ["pebrel-hook", "nebula-hook"]
-    };
+    let names = ["pebrel-hook", "nebula-hook"]
+        .map(|stem| format!("{stem}{}", std::env::consts::EXE_SUFFIX));
     names
         .into_iter()
-        .flat_map(|name| [exe_dir.join("runtime").join(name), exe_dir.join(name)])
+        .flat_map(|name| [exe_dir.join("runtime").join(&name), exe_dir.join(name)])
         .find(|path| {
             let Ok(metadata) = path.metadata() else { return false };
             if !metadata.is_file() {
