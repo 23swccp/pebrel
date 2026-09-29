@@ -71,7 +71,7 @@ pub(super) fn content(agent: AgentHook, helper: &str) -> io::Result<String> {
         // shell; an encoded PowerShell command avoids path quoting differences
         // between cmd, PowerShell and Git Bash on Windows.
         let powershell = format!("& '{}' {source} --event {event}", helper.replace('\'', "''"));
-        let command = encoded_powershell(&powershell);
+        let command = native_command(helper, source, event);
         let value = if agent == AgentHook::Copilot {
             json!([{ "type": "command", "bash": command, "powershell": powershell, "timeoutSec": 10 }])
         } else {
@@ -85,6 +85,14 @@ pub(super) fn content(agent: AgentHook, helper: &str) -> io::Result<String> {
         root["version"] = json!(1);
     }
     serde_json::to_string_pretty(&root).map_err(io::Error::other)
+}
+
+pub(super) fn native_command(helper: &str, source: &str, event: &str) -> String {
+    if cfg!(windows) {
+        encoded_powershell(&format!("& '{}' {source} --event {event}", helper.replace('\'', "''")))
+    } else {
+        format!("{} {source} --event {event}", crate::ai_hook::remote::quote(helper))
+    }
 }
 
 pub(super) fn encoded_powershell(script: &str) -> String {
@@ -146,11 +154,9 @@ mod tests {
         let grok: Value = serde_json::from_str(&content(AgentHook::Grok, helper).unwrap()).unwrap();
         assert!(grok["hooks"]["Notification"][0].get("matcher").is_none());
         assert!(grok["hooks"]["StopFailure"].is_array());
-        assert!(
-            grok["hooks"]["Stop"][0]["hooks"][0]["command"]
-                .as_str()
-                .unwrap()
-                .starts_with("powershell.exe ")
+        assert_eq!(
+            grok["hooks"]["Stop"][0]["hooks"][0]["command"],
+            native_command(helper, "grok", "done")
         );
         let omp = content(AgentHook::OhMyPi, helper).unwrap();
         assert!(omp.contains("@oh-my-pi/pi-coding-agent"));

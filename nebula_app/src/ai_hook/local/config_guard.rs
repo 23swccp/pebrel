@@ -2,12 +2,43 @@
 use super::{ManagedSkillInstall, ensure_runtime_skills, settings};
 use nebula_settings::{AgentHook, RawSettings};
 use std::collections::HashSet;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 use std::time::Duration;
 
-pub fn spawn_config_guard() {
-    if let Err(err) = std::thread::Builder::new().name("pebrel-ai-setup".into()).spawn(config_guard)
+pub struct ConfigGuard {
+    stop: Arc<AtomicBool>,
+    wake: mpsc::SyncSender<()>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for ConfigGuard {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        let _ = self.wake.try_send(());
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
+
+pub fn spawn_config_guard() -> Option<ConfigGuard> {
+    let (wake, receive) = mpsc::sync_channel(1);
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopping = stop.clone();
+    let events = wake.clone();
+    match std::thread::Builder::new()
+        .name("pebrel-ai-setup".into())
+        .spawn(move || config_guard(events, receive, stopping))
     {
-        log::warn!("ai_hook: failed to spawn settings guard: {err}");
+        Ok(worker) => Some(ConfigGuard { stop, wake, worker: Some(worker) }),
+        Err(error) => {
+            log::warn!("ai_hook: failed to spawn settings guard: {error}");
+            None
+        },
     }
 }
 
@@ -43,13 +74,12 @@ fn heal_all() {
     }
 }
 
-fn config_guard() {
+fn config_guard(tx: mpsc::SyncSender<()>, rx: mpsc::Receiver<()>, stop: Arc<AtomicBool>) {
     use notify::{RecursiveMode, Watcher};
-    use std::sync::mpsc::{RecvTimeoutError, sync_channel};
+    use std::sync::mpsc::RecvTimeoutError;
 
     heal_all();
     // 配置事件只代表需要重读；合并成一个信号，避免繁忙目录堆积整批事件。
-    let (tx, rx) = sync_channel(1);
     let mut watcher =
         match notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
             let relevant = result.as_ref().map_or(true, |event| {
@@ -71,21 +101,23 @@ fn config_guard() {
                 let _ = tx.try_send(());
             }
         }) {
-            Ok(watcher) => watcher,
+            Ok(watcher) => Some(watcher),
             Err(error) => {
                 log::warn!("ai_hook: settings watcher unavailable ({error}); polling instead");
-                poll_guard()
+                None
             },
         };
     let mut watched = HashSet::new();
-    loop {
+    while !stop.load(Ordering::Acquire) {
         let dirs = std::iter::once(nebula_settings::settings_dir()).chain(
             AgentHook::ALL.into_iter().filter_map(|agent| {
                 settings::configuration(agent)?.0.parent().map(std::path::Path::to_path_buf)
             }),
         );
         for dir in dirs.filter(|dir| dir.is_dir()) {
-            if !watched.contains(&dir) {
+            if let Some(watcher) = watcher.as_mut()
+                && !watched.contains(&dir)
+            {
                 match watcher.watch(&dir, RecursiveMode::NonRecursive) {
                     Ok(()) => {
                         watched.insert(dir);
@@ -95,18 +127,17 @@ fn config_guard() {
             }
         }
         match rx.recv_timeout(Duration::from_secs(300)) {
-            Ok(()) => while rx.recv_timeout(Duration::from_millis(400)).is_ok() {},
+            Ok(()) => {
+                while !stop.load(Ordering::Acquire)
+                    && rx.recv_timeout(Duration::from_millis(400)).is_ok()
+                {}
+            },
             Err(RecvTimeoutError::Timeout) => {},
             Err(RecvTimeoutError::Disconnected) => return,
         }
         // 定时一轮兼顾启动后新安装的 Agent，以及未能建立 watcher 的目录。
-        heal_all();
-    }
-}
-
-fn poll_guard() -> ! {
-    loop {
-        std::thread::sleep(Duration::from_secs(300));
-        heal_all();
+        if !stop.load(Ordering::Acquire) {
+            heal_all();
+        }
     }
 }

@@ -183,7 +183,9 @@ pub(crate) fn set_enabled(agent: AgentHook, enabled: bool) -> io::Result<()> {
             ));
         }
         if helper_path().is_none() {
-            return Err(io::Error::other("pebrel-hook.exe is missing from this installation."));
+            return Err(io::Error::other(
+                "The Pebrel hook helper is missing from this installation.",
+            ));
         }
     }
     // Persist first so another instance's guard cannot reinstall a removed hook.

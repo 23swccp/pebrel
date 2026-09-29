@@ -1,6 +1,6 @@
 //! Windows named-pipe transport. Supplies kernel process identity to parsed events.
 
-use super::helper_path;
+use super::local::helper_path;
 use crate::ai_hook::{
     AiHookEvent, HOOK_EXE_ENV, LEGACY_HOOK_EXE_ENV, LEGACY_PIPE_ENV, PIPE_ENV, parse_envelope,
 };

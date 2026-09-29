@@ -44,6 +44,7 @@ mod appearance_picker;
 #[path = "background_color.rs"]
 mod background_color;
 mod backup;
+mod cursor_motion;
 mod design;
 mod font_picker;
 mod providers;
@@ -159,6 +160,7 @@ pub struct SettingsPane {
     provider_status: Option<ProviderStatus>,
     provider_test_seq: u64,
     provider_test_running: bool,
+    provider_key_task: Option<Task<()>>,
     provider_codex_confirm: Option<String>,
     /// SSH 主机列表（共享三键 + merge 权威）；操作后整体重载防漂移。
     /// SSH 区的行为实现拆在 `ssh_settings.rs`（同类型第二个 impl 块）。
@@ -746,6 +748,7 @@ impl SettingsPane {
             "ai_toasts" => flag!(ai_toasts),
             "ctrl_wheel_font_zoom" => flag!(ctrl_wheel_font_zoom),
             "notification_duration" => pick!(notification_duration),
+            "cursor_motion" => pick!(cursor_motion),
             "cjk_bold_regular" => flag!(cjk_bold_regular),
             "fetch" => flag!(fetch),
             "keep_session" => flag!(keep_session),
