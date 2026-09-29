@@ -35,6 +35,25 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [28])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CommandComposerTest {
+    @Test fun defaultComposerExposesShiftTabInTheNarrowShortcutMenu() {
+        val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
+        val repository = SessionRepository(context)
+        val sent = mutableListOf<String>()
+        var allowed by mutableStateOf(true)
+        compose.setContent { MaterialTheme {
+            Box(Modifier.width(240.dp)) {
+                CommandComposer("backtab", repository, allowed, true, null, { sent += it }) { true }
+            }
+        } }
+        compose.onNodeWithContentDescription(context.getString(R.string.terminal_shortcuts_more)).performClick()
+        compose.onAllNodesWithText("Shift+Tab").onLast().assertIsDisplayed().performClick()
+        assertEquals(listOf("Shift+Tab"), sent)
+        compose.runOnIdle { allowed = false }
+        compose.onNodeWithContentDescription(context.getString(R.string.terminal_shortcuts_more)).performClick()
+        compose.onAllNodesWithText("Shift+Tab").onLast().assertIsNotEnabled()
+        assertEquals(listOf("Shift+Tab"), sent)
+    }
+
     @Test fun compactShortcutOverflowProvidesATappableMenuAndRespectsInputPermission() {
         val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
         val sent = mutableListOf<String>()
