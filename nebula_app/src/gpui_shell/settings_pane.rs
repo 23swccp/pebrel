@@ -44,6 +44,7 @@ mod appearance_picker;
 #[path = "background_color.rs"]
 mod background_color;
 mod backup;
+mod cursor_motion;
 mod design;
 mod font_picker;
 mod providers;
@@ -747,6 +748,7 @@ impl SettingsPane {
             "ai_toasts" => flag!(ai_toasts),
             "ctrl_wheel_font_zoom" => flag!(ctrl_wheel_font_zoom),
             "notification_duration" => pick!(notification_duration),
+            "cursor_motion" => pick!(cursor_motion),
             "cjk_bold_regular" => flag!(cjk_bold_regular),
             "fetch" => flag!(fetch),
             "keep_session" => flag!(keep_session),
