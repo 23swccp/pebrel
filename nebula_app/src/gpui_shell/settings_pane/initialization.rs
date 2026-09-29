@@ -32,6 +32,10 @@ impl SettingsPane {
                     if let SelectEvent::Confirm(Some(_)) = event {
                         let row = entity.read(cx).selected_index(cx).map(|path| path.row);
                         if let Some(value) = row.and_then(|row| values.get(row)) {
+                            if key == "cursor_motion" {
+                                this.set_cursor_motion(value, window, cx);
+                                return;
+                            }
                             if key == "notification_duration" {
                                 this.set_notification_duration(value, window, cx);
                                 return;
@@ -54,6 +58,13 @@ impl SettingsPane {
 
         let cursor_current =
             runtime.cursor_shape.map(|shape| shape.settings_value()).unwrap_or("beam");
+        add_select(
+            "cursor_motion",
+            nebula_settings::CursorMotion::VALUES,
+            runtime.cursor_motion.settings_value(),
+            window,
+            cx,
+        );
         let shell_current = crate::platform::shell::effective_shell_id(runtime.shell.as_deref());
 
         add_select(
@@ -545,10 +556,8 @@ impl SettingsPane {
         subscriptions.push(cx.intercept_keystrokes(appearance_interceptor));
 
         let settings_search_input = cx.new(|cx| {
-            InputState::new(window, cx).placeholder(language.pick(
-                "搜索全部设置，例如「字号」「透明度」「更新」",
-                "Search all settings, e.g. font, opacity, update",
-            ))
+            InputState::new(window, cx)
+                .placeholder(language.text(crate::i18n::Message::CommonSearchSettings))
         });
         subscriptions.push(cx.subscribe_in(
             &settings_search_input,
@@ -573,6 +582,7 @@ impl SettingsPane {
             launch_at_login: crate::platform::startup::launch_at_login(),
             active_section: 1,
             agents: agents::AgentSettingsState::new(cx),
+            mobile: mobile::MobileState::new(window, cx),
             appearance_picker: None,
             appearance_picker_seq: 0,
             theme_editor: None,
@@ -614,6 +624,7 @@ impl SettingsPane {
             provider_status: None,
             provider_test_seq: 0,
             provider_test_running: false,
+            provider_key_task: None,
             provider_codex_confirm: None,
             ssh_library,
             ssh_hosts: crate::gpui_shell::ssh_hosts::SshHostLists::load(),

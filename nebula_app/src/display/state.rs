@@ -286,6 +286,15 @@ pub struct AiSessionIdentity {
 }
 
 impl NebulaPaneState {
+    pub(crate) fn completion_query_matches(&self, key: &str) -> bool {
+        self.suggestion_key == key
+    }
+
+    pub(crate) fn begin_completion_query(&mut self, key: String) {
+        self.clear_completion_hints();
+        self.suggestion_key = key;
+    }
+
     /// Drop every completion hint (ghost remainder AND popup list) plus the
     /// recompute cache, so the next frame re-derives them from the new line.
     pub(crate) fn clear_completion_hints(&mut self) {
