@@ -64,7 +64,7 @@ fun LocalTerminalScreen(session: LocalSession, repository: SessionRepository, on
                 "Ctrl+B" -> KeyEvent.KEYCODE_B
                 "Ctrl+C" -> KeyEvent.KEYCODE_C
                 "Esc" -> KeyEvent.KEYCODE_ESCAPE
-                "Tab" -> KeyEvent.KEYCODE_TAB
+                "Tab", "Shift+Tab" -> KeyEvent.KEYCODE_TAB
                 "←" -> KeyEvent.KEYCODE_DPAD_LEFT
                 "→" -> KeyEvent.KEYCODE_DPAD_RIGHT
                 "↑" -> KeyEvent.KEYCODE_DPAD_UP
@@ -72,7 +72,8 @@ fun LocalTerminalScreen(session: LocalSession, repository: SessionRepository, on
             }
             val control = label in setOf("Ctrl+C", "Ctrl+B")
             val letter = if (control) label.last().lowercase() else ""
-            if (!session.terminal.key(key, if (control) 2 else 0,
+            val modifiers = if (control) 2 else if (label == "Shift+Tab") 1 else 0
+            if (!session.terminal.key(key, modifiers,
                     text = letter, unshifted = letter.firstOrNull()?.code ?: 0)) repository.error.value = "input_rejected"
         }, onKeyboard = { keyboardRequest++ }, focused = focused, onToggleFocus = { focused = !focused },
             onAttach = attachments.pick, attachmentBusy = attachments.busy,
@@ -143,13 +144,14 @@ fun DesktopTerminalScreen(desktop: DesktopWorkspace, pane: DesktopPane, reposito
             val code = when (label) {
                 "Ctrl+C" -> KeyEvent.KEYCODE_C
                 "Esc" -> KeyEvent.KEYCODE_ESCAPE
-                "Tab" -> KeyEvent.KEYCODE_TAB
+                "Tab", "Shift+Tab" -> KeyEvent.KEYCODE_TAB
                 "←" -> KeyEvent.KEYCODE_DPAD_LEFT
                 "→" -> KeyEvent.KEYCODE_DPAD_RIGHT
                 "↑" -> KeyEvent.KEYCODE_DPAD_UP
                 else -> KeyEvent.KEYCODE_DPAD_DOWN
             }
-            input.key(code, if (label == "Ctrl+C") 2 else 0)
+            val modifiers = if (label == "Ctrl+C") 2 else if (label == "Shift+Tab") 1 else 0
+            input.key(code, modifiers)
         }, onKeyboard = { keyboardRequest++ }, focused = focused, onToggleFocus = { focused = !focused },
             send = input::submit)
     }
