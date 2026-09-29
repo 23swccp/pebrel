@@ -64,7 +64,7 @@ pub const CAPABILITIES: Capabilities = {
             quick_terminal_hotkey: true,
             system_font_enumeration: true,
             credential_store: true,
-            shell_context_menu: true,
+            shell_context_menu: cfg!(target_os = "macos"),
         }
     }
 };
@@ -100,7 +100,7 @@ mod tests {
             assert_eq!(CAPABILITIES.self_update_install, cfg!(target_os = "macos"));
             assert!(!CAPABILITIES.ai_hook_server);
             assert!(CAPABILITIES.quick_terminal_hotkey);
-            assert!(CAPABILITIES.shell_context_menu);
+            assert_eq!(CAPABILITIES.shell_context_menu, cfg!(target_os = "macos"));
         }
     }
 }

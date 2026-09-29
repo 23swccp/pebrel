@@ -88,6 +88,10 @@ pub fn refresh_app_icon() {
 }
 
 fn refresh() {
+    // 工作区可先于原生壳应用设置；没有事件循环所有者时只记录状态，不创建 AppKit 对象。
+    if CALLBACK.get().is_none() {
+        return;
+    }
     #[cfg(target_os = "macos")]
     apply();
     #[cfg(target_os = "linux")]
@@ -120,8 +124,8 @@ fn render(
         crate::i18n::LanguagePreference::from(nebula_settings::RuntimeSettings::load().language)
             .resolved();
     let menu = Menu::new();
-    let show = MenuItem::new(language.pick("显示 Pebrel", "Show Pebrel"), true, None);
-    let quit = MenuItem::new(language.pick("退出", "Quit"), true, None);
+    let show = MenuItem::new(language.text(crate::i18n::Message::TrayShow), true, None);
+    let quit = MenuItem::new(language.text(crate::i18n::Message::TrayQuit), true, None);
     let mut actions = HashMap::from([
         (show.id().clone(), GpuiTrayCommand::Focus(None)),
         (quit.id().clone(), GpuiTrayCommand::Quit),

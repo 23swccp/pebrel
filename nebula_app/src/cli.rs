@@ -162,9 +162,6 @@ fn parse_hex_or_decimal(input: &str) -> Option<u32> {
 /// Terminal specific cli options which can be passed to new windows via IPC.
 #[derive(Serialize, Deserialize, Args, Default, Debug, Clone, PartialEq, Eq)]
 pub struct TerminalOptions {
-    /// Open a directory supplied by the desktop file manager.
-    #[clap(value_name = "DIRECTORY", value_hint = ValueHint::DirPath, conflicts_with = "working_directory")]
-    pub directory: Option<PathBuf>,
     /// Start the shell in the specified working directory.
     #[clap(long, value_hint = ValueHint::FilePath)]
     pub working_directory: Option<PathBuf>,
@@ -218,10 +215,7 @@ impl TerminalOptions {
     /// Every shell-launching path resolves the directory through here so the
     /// repair applies whether the options came from the CLI or over IPC.
     pub fn resolved_working_directory(&self) -> Option<PathBuf> {
-        self.working_directory
-            .clone()
-            .or_else(|| self.directory.clone())
-            .map(repair_context_menu_dir)
+        self.working_directory.clone().map(repair_context_menu_dir)
     }
 
     /// Shell id requested on the command line, normalized: blank counts as absent.
@@ -918,6 +912,7 @@ impl ConfigLanguage {
 }
 
 /// Options for the `setup-ai` subcommand.
+#[cfg(windows)]
 #[derive(Args, Debug)]
 pub struct SetupAiOptions {
     /// Remove Pebrel-managed hooks for every supported agent and preserve
@@ -1852,27 +1847,6 @@ mod tests {
         assert!(
             Options::try_parse_from(["pebrel", "--gpui", "--shell", "pwsh", "-e", "cmd"]).is_err()
         );
-    }
-
-    #[test]
-    fn desktop_directory_keeps_command_and_subcommand_parsing() {
-        let options = Options::try_parse_from(["pebrel", "/tmp/a folder"]).unwrap();
-        assert_eq!(
-            options.window_options.terminal_options.resolved_working_directory(),
-            Some(PathBuf::from("/tmp/a folder"))
-        );
-        assert!(
-            Options::try_parse_from(["pebrel", "/tmp/a", "--working-directory", "/tmp/b"]).is_err()
-        );
-        let command = Options::try_parse_from(["pebrel", "-e", "sh", "-c", "echo ok"]).unwrap();
-        assert!(command.window_options.terminal_options.directory.is_none());
-        assert_eq!(command.window_options.terminal_options.command, ["sh", "-c", "echo ok"]);
-        assert!(
-            Options::try_parse_from(["pebrel", "config", "--help"]).unwrap_err().use_stderr()
-                == false
-        );
-        let legacy = serde_json::json!({"working_directory": null, "shell": null, "hold": false, "command": []});
-        assert!(serde_json::from_value::<TerminalOptions>(legacy).unwrap().directory.is_none());
     }
 
     /// 空白/空的 `--shell` 当作没给：脚本传了空串时不该去解析一个空 id，
