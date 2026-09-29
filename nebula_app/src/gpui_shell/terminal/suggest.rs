@@ -68,6 +68,36 @@ pub fn update(
     );
 }
 
+pub(super) fn cache_key(state: &NebulaPaneState, line: &str, style: CompletionStyle) -> String {
+    let commands = crate::display::nebula_commands_handle();
+    let generation = commands.lock().map(|commands| commands.len()).unwrap_or(0);
+    crate::display::suggest_engine::suggestion_key(state, line, style, generation)
+}
+
+pub(super) struct Suggestion {
+    pub ghost: String,
+    pub items: Vec<crate::display::NebulaCompletionItem>,
+    pub pending_remote_dir: Option<String>,
+}
+
+/// 只把请求所需的数据送到后台，终端网格与视图仍由前台独占。
+pub(super) fn calculate(
+    cwd: String,
+    env: crate::display::SuggestEnv,
+    line: String,
+    style: CompletionStyle,
+) -> Suggestion {
+    let mut state = NebulaPaneState::default();
+    state.cwd = cwd;
+    state.suggest_env = env;
+    update(&mut state, Some(line), true, style);
+    Suggestion {
+        ghost: state.suggestion,
+        items: state.completion_items,
+        pending_remote_dir: state.pending_remote_dir,
+    }
+}
+
 /// Enter 提交：命令进共享历史（与旧壳 `nebula_commit_line` 同一落点），
 /// pane 状态清空等下一行。空行只清不记。
 pub fn commit_line(state: &mut NebulaPaneState) {
