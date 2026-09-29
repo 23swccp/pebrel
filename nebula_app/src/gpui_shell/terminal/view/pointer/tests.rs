@@ -219,7 +219,14 @@ fn dragging_across_a_rendered_formula_keeps_hit_mapping_and_copies_source(cx: &m
                 .unwrap()
         })
     };
-    let suffix = visual_suffix(&terminal, &cx);
+    // Layout and rasterization run on the owned background executor. Advance
+    // real frames until their cache results become paintable, without sleeping.
+    let mut suffix = 5;
+    for _ in 0..8 {
+        draw(&mut cx);
+        suffix = visual_suffix(&terminal, &cx);
+        if suffix < 5 { break; }
+    }
     assert!(suffix < 5, "the real rendered frame must compact the formula before selection");
     let (start, end) = terminal.read_with(&cx, |view, _| {
         (
