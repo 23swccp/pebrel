@@ -600,6 +600,7 @@ pub fn probe_system_proxy() -> Option<(String, SystemProxySource)> {
 /// 值必须是 Rust 已经接受的 `http://` URL。SOCKS 不写它，也不改写成 HTTP。
 /// 不进入 `WSLENV`：来宾里没有这套 .NET 默认值。
 const POWERSHELL_HTTP_PROXY: &str = "PEBREL_HTTP_PROXY";
+const TERMINAL_PROXY_VARIABLES: [&str; 3] = ["http_proxy", "https_proxy", "all_proxy"];
 
 /// 新开的本地终端要带上的代理变量。
 ///
@@ -610,7 +611,7 @@ const POWERSHELL_HTTP_PROXY: &str = "PEBREL_HTTP_PROXY";
 /// `http_proxy`、`https_proxy`、`all_proxy` 使用同一条已校验 URL，协议不改写。
 /// curl 在协议专用变量存在时忽略 `all_proxy`，所以不能只把原协议留在 `all_proxy`。
 /// HTTP URL 另加 `PEBREL_HTTP_PROXY`，系统代理和自定义地址走同一条标记。
-pub fn terminal_proxy_assignments(
+fn terminal_proxy_assignments(
     mode: ProxyMode,
     url: &str,
     use_system_proxy: bool,
@@ -622,7 +623,7 @@ pub fn terminal_proxy_assignments(
         _ => None,
     };
     let Some(configured) = chosen else { return Vec::new() };
-    let mut pairs: Vec<(String, String)> = ["http_proxy", "https_proxy", "all_proxy"]
+    let mut pairs: Vec<(String, String)> = TERMINAL_PROXY_VARIABLES
         .into_iter()
         .map(|name| (name.to_owned(), configured.clone()))
         .collect();
@@ -634,9 +635,9 @@ pub fn terminal_proxy_assignments(
 
 /// 把 [`terminal_proxy_assignments`] 写进子进程环境。同名变量不分大小写替换，
 /// 避免刷新出来的 `HTTP_PROXY` 和这里的 `http_proxy` 各留一份。三个代理变量
-/// 保留选定协议，并列入 `WSLENV`。SOCKS 会清掉继承来的 `PEBREL_HTTP_PROXY`，
-/// 避免 WebRequest 还指着上一次的 HTTP 代理。返回是否写入了代理。
-pub fn apply_terminal_proxy_env(
+/// 保留选定协议。SOCKS 用空标记遮蔽继承来的 `PEBREL_HTTP_PROXY`，避免
+/// WebRequest 还指着上一次的 HTTP 代理。Windows 适配器另行维护 WSLENV。
+fn apply_terminal_proxy_env(
     env: &mut HashMap<String, String>,
     mode: ProxyMode,
     url: &str,
@@ -650,23 +651,19 @@ pub fn apply_terminal_proxy_env(
     let marks_http = pairs.iter().any(|(name, _)| name.eq_ignore_ascii_case(POWERSHELL_HTTP_PROXY));
     if !marks_http {
         env.retain(|key, _| !key.eq_ignore_ascii_case(POWERSHELL_HTTP_PROXY));
+        // An empty override also shadows a marker inherited by an incremental
+        // child environment; removing a map entry alone cannot remove its parent.
+        env.insert(POWERSHELL_HTTP_PROXY.to_owned(), String::new());
     }
-    let names: Vec<String> = pairs
-        .iter()
-        .filter(|(name, _)| !name.eq_ignore_ascii_case(POWERSHELL_HTTP_PROXY))
-        .map(|(name, _)| name.clone())
-        .collect();
     for (name, value) in pairs {
         env.retain(|key, _| !key.eq_ignore_ascii_case(&name));
         env.insert(name, value);
     }
-    // 不按平台分叉：非 Windows 多一个 WSLENV 没有作用，但能少一个平台 cfg。
-    merge_proxy_wslenv(env, &names);
     true
 }
 
 /// 读已保存的网络设置，给即将启动的本地终端补代理变量。已打开的会话不经过这里。
-pub fn apply_saved_terminal_proxy_env(env: &mut HashMap<String, String>) -> bool {
+pub(crate) fn apply_saved_terminal_proxy_env(env: &mut HashMap<String, String>) -> bool {
     let settings = nebula_settings::RuntimeSettings::load();
     let mode = ProxyMode::parse(settings.ssh_proxy_mode.settings_value());
     let system_url = if mode == ProxyMode::System && settings.terminal_proxy {
@@ -681,36 +678,6 @@ pub fn apply_saved_terminal_proxy_env(env: &mut HashMap<String, String>) -> bool
         settings.terminal_proxy,
         system_url.as_deref(),
     )
-}
-
-/// 启动程序是 cmd、Windows PowerShell 5.x，还是 PowerShell 7。
-/// 三种都继承上面的环境变量。PowerShell 只在 `PEBREL_HTTP_PROXY` 存在时，
-/// 按版本把这个 HTTP 地址写进 WebRequest 或 `-Proxy`。
-pub fn terminal_shell_kind(program: &str) -> TerminalShellKind {
-    let file = program.rsplit(['\\', '/']).next().unwrap_or(program);
-    let file = file.to_ascii_lowercase();
-    if file == "cmd" || file == "cmd.exe" {
-        return TerminalShellKind::Cmd;
-    }
-    if file == "pwsh" || file == "pwsh.exe" {
-        return TerminalShellKind::PowerShell7;
-    }
-    let path = program.to_ascii_lowercase();
-    if path.contains(r"powershell\7\") || path.contains("powershell/7/") {
-        return TerminalShellKind::PowerShell7;
-    }
-    if file == "powershell" || file == "powershell.exe" || path.contains(r"windowspowershell\") {
-        return TerminalShellKind::WindowsPowerShell;
-    }
-    TerminalShellKind::Other
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TerminalShellKind {
-    Cmd,
-    WindowsPowerShell,
-    PowerShell7,
-    Other,
 }
 
 /// 能交给 curl / git 的代理 URL。已带协议的原样保留（含账号）；裸 `host:port`
@@ -728,23 +695,29 @@ fn env_proxy_url(raw: &str) -> Option<String> {
     }
 }
 
-fn merge_proxy_wslenv(env: &mut HashMap<String, String>, names: &[String]) {
+/// Preserve explicit forwarding flags and, for incremental child environments,
+/// entries inherited from the launcher. Complete snapshots pass no fallback.
+pub(crate) fn forward_terminal_proxy_to_wsl(
+    env: &mut HashMap<String, String>,
+    inherited: Option<&str>,
+) {
     const WSLENV: &str = "WSLENV";
     let existing = env
         .iter()
         .find(|(key, _)| key.eq_ignore_ascii_case(WSLENV))
-        .map(|(_, value)| value.clone())
+        .map(|(_, value)| value.as_str())
+        .or(inherited)
         .unwrap_or_default();
     let mut entries: Vec<String> =
         existing.split(':').filter(|entry| !entry.is_empty()).map(str::to_owned).collect();
-    for name in names {
+    for name in TERMINAL_PROXY_VARIABLES {
         if entries
             .iter()
             .any(|entry| entry.split('/').next().unwrap_or(entry).eq_ignore_ascii_case(name))
         {
             continue;
         }
-        entries.push(name.clone());
+        entries.push(name.to_owned());
     }
     env.retain(|key, _| !key.eq_ignore_ascii_case(WSLENV));
     env.insert(WSLENV.to_owned(), entries.join(":"));
@@ -1339,32 +1312,6 @@ mod tests {
     }
 
     #[test]
-    fn cmd_powershell5_and_powershell7_are_distinct_and_all_inherit_proxy_variables() {
-        use super::TerminalShellKind;
-        assert_eq!(terminal_shell_kind(r"C:\Windows\System32\cmd.exe"), TerminalShellKind::Cmd);
-        assert_eq!(
-            terminal_shell_kind(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
-            TerminalShellKind::WindowsPowerShell
-        );
-        assert_eq!(
-            terminal_shell_kind(r"C:\Program Files\PowerShell\7\pwsh.exe"),
-            TerminalShellKind::PowerShell7
-        );
-        let pairs =
-            terminal_proxy_assignments(ProxyMode::Custom, "socks5://127.0.0.1:7890", false, None);
-        for kind in [
-            TerminalShellKind::Cmd,
-            TerminalShellKind::WindowsPowerShell,
-            TerminalShellKind::PowerShell7,
-        ] {
-            let _ = kind;
-            assert_eq!(assigned_proxy(&pairs, "http_proxy"), Some("socks5://127.0.0.1:7890"));
-            assert_eq!(assigned_proxy(&pairs, "https_proxy"), Some("socks5://127.0.0.1:7890"));
-            assert_eq!(assigned_proxy(&pairs, "all_proxy"), Some("socks5://127.0.0.1:7890"));
-        }
-    }
-
-    #[test]
     fn system_proxy_switch_does_not_gate_a_custom_address() {
         let custom = terminal_proxy_assignments(
             ProxyMode::Custom,
@@ -1444,7 +1391,8 @@ mod tests {
             env.iter().find(|(key, _)| key.eq_ignore_ascii_case("all_proxy")).unwrap().1,
             "socks5://user:p%40ss@127.0.0.1:7890"
         );
-        assert!(env.get("PEBREL_HTTP_PROXY").is_none());
+        assert_eq!(env.get("PEBREL_HTTP_PROXY").map(String::as_str), Some(""));
+        forward_terminal_proxy_to_wsl(&mut env, None);
         let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
         assert!(wslenv.split(':').any(|entry| entry == "KEEP/p"));
         assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("http_proxy")));
@@ -1484,7 +1432,8 @@ mod tests {
             None,
         ));
         assert_eq!(env.get("http_proxy").map(String::as_str), Some("socks5h://127.0.0.1:1080"));
-        assert!(env.get("PEBREL_HTTP_PROXY").is_none());
+        assert_eq!(env.get("PEBREL_HTTP_PROXY").map(String::as_str), Some(""));
+        forward_terminal_proxy_to_wsl(&mut env, None);
         let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
         assert!(!wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("PEBREL_HTTP_PROXY")));
 
@@ -1513,5 +1462,18 @@ mod tests {
         ));
         assert_eq!(env.len(), 1);
         assert_eq!(env.get("WSLENV").map(String::as_str), Some("KEEP/p"));
+    }
+
+    #[test]
+    fn wsl_forwarding_preserves_inherited_and_explicit_environment_scopes() {
+        let mut inherited = HashMap::new();
+        forward_terminal_proxy_to_wsl(&mut inherited, Some("KEEP/p:OTHER/u"));
+        assert_eq!(inherited["WSLENV"], "KEEP/p:OTHER/u:http_proxy:https_proxy:all_proxy");
+        let mut complete = HashMap::new();
+        forward_terminal_proxy_to_wsl(&mut complete, None);
+        assert_eq!(complete["WSLENV"], "http_proxy:https_proxy:all_proxy");
+        let mut explicit = HashMap::from([("WSLENV".into(), "http_proxy/u".into())]);
+        forward_terminal_proxy_to_wsl(&mut explicit, Some("STALE/p"));
+        assert_eq!(explicit["WSLENV"], "http_proxy/u:https_proxy:all_proxy");
     }
 }

@@ -10,13 +10,16 @@ pub(crate) fn prepare_local_pty(options: &mut nebula_terminal::tty::Options) {
         let inherited_override =
             !options.env_is_complete && std::env::var_os(GROK_LEGACY_CONSOLE).is_some();
         apply_local_console_defaults(options, inherited_override);
+        // Both Windows shells use this adapter after environment refresh. New
+        // panes get the selected protocol; existing processes remain unchanged.
+        if crate::ssh_proxy::apply_saved_terminal_proxy_env(&mut options.env) {
+            let inherited =
+                if options.env_is_complete { None } else { std::env::var("WSLENV").ok() };
+            crate::ssh_proxy::forward_terminal_proxy_to_wsl(&mut options.env, inherited.as_deref());
+        }
     }
     #[cfg(not(windows))]
     let _ = options;
-    // 放在注册表快照之后：自定义代理地址，或已打开的系统代理，按原协议写进
-    // http_proxy / https_proxy / all_proxy。HTTP 再加 PEBREL_HTTP_PROXY。
-    // 旧壳和 GPUI 都走这个入口，已打开的会话不改。
-    crate::ssh_proxy::apply_saved_terminal_proxy_env(&mut options.env);
 }
 
 #[cfg(windows)]

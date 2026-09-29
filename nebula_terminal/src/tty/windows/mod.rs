@@ -18,6 +18,9 @@ mod cmd_prompt;
 mod conpty;
 mod environment;
 
+#[cfg(test)]
+mod proxy_tests;
+
 use blocking::{UnblockedReader, UnblockedWriter};
 use conpty::Conpty as Backend;
 pub use environment::refresh_environment;
@@ -383,22 +386,9 @@ function global:Get-NebulaBoolSetting {
     }
 }
 
-# cmd 不跑这段：它直接继承进程里的 http_proxy / https_proxy / all_proxy。
-# 协议由 Rust 定好。PEBREL_HTTP_PROXY 只在选定代理本身是 HTTP 时存在，
-# 系统代理和自定义地址共用这一条。SOCKS 不交给 WebRequest。
-# 5.x 的 Invoke-WebRequest 走 WebRequest；7.x 只认 -Proxy。
-if ($env:PEBREL_HTTP_PROXY) {
-    $pebrelHttpProxy = $env:PEBREL_HTTP_PROXY
-    $pebrelIsPwsh = ($PSVersionTable.PSEdition -eq 'Core') -or ($PSVersionTable.PSVersion.Major -ge 6)
-    try {
-        $PSDefaultParameterValues['Invoke-WebRequest:Proxy'] = $pebrelHttpProxy
-        $PSDefaultParameterValues['Invoke-RestMethod:Proxy'] = $pebrelHttpProxy
-        if (-not $pebrelIsPwsh) {
-            [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy($pebrelHttpProxy, $true)
-        }
-    } catch {}
-}
-
+"#,
+    include_str!("proxy.ps1"),
+    r#"
 # 用户自己的提示符（$PROFILE 里的 oh-my-posh / starship / 手写 prompt）是不是
 # 已经就位。判据只能看函数体：PowerShell 内置 prompt 固定引用
 # $executionContext.SessionState.Path.CurrentLocation；而 oh-my-posh 那一类是经
@@ -1178,7 +1168,8 @@ mod test {
         assert!(NEBULA_PROMPT_PS1.contains("$env:PEBREL_HTTP_PROXY"));
         assert!(NEBULA_PROMPT_PS1.contains("$PSVersionTable.PSEdition"));
         assert!(NEBULA_PROMPT_PS1.contains("[System.Net.WebRequest]::DefaultWebProxy"));
-        assert!(NEBULA_PROMPT_PS1.contains("Invoke-WebRequest:Proxy"));
+        assert!(NEBULA_PROMPT_PS1.contains("Invoke-WebRequest"));
+        assert!(NEBULA_PROMPT_PS1.contains("${command}:Proxy"));
         assert!(!NEBULA_PROMPT_PS1.contains("ssh_proxy_mode"));
         assert!(!NEBULA_PROMPT_PS1.contains("ssh_proxy_url"));
     }
@@ -1410,6 +1401,7 @@ foreach ($powerline in @($true, $false)) {
     if ($rendered -notlike '*test-branch*') { throw 'Missing branch' }
     if ($rendered -notlike "*$([char]27)]133;A*") { throw 'Missing prompt boundary' }
 }
+
 "#,
         );
     }
