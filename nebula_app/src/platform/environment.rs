@@ -33,7 +33,7 @@ fn apply_local_console_defaults(
             options.env.insert(name.to_owned(), inherited.unwrap_or_else(|| value.to_owned()));
         }
     }
-    // Grok 1.0.25 treats unknown Windows terminal names as legacy consoles and
+    // Grok 1.0.25 treats unknown terminal identities on Windows as legacy consoles and
     // omits its Braille logo. Keep our real identity and use its capability override.
     // Remove this default when Grok recognizes Pebrel's terminal capabilities.
     // A complete refreshed environment is authoritative, including deleted keys.

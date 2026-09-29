@@ -238,6 +238,36 @@ class TerminalSnapshotViewTest {
         bitmap.recycle()
     }
 
+    @Test fun tuiModeSymbolsKeepBothPauseBarsAndThePlayTipInsideTheirCells() {
+        val bitmap = render(view(row("\u23f8\u23f5"), row("  ", fill = green)))
+        val fill = colorBounds(bitmap, green)
+        val cw = fill.width() / 2f
+        val ch = fill.height().toFloat()
+        fun sample(column: Int, x: Float, y: Float) =
+            bitmap.getPixel(((column + x) * cw).toInt(), (y * ch).toInt())
+        assertEquals("left pause bar", red, sample(0, .3f, .5f))
+        assertEquals("pause gap must stay open", background, sample(0, .5f, .5f))
+        assertEquals("right pause bar must not be clipped", red, sample(0, .7f, .5f))
+        assertEquals("play tip reaches the right half", red, sample(1, .65f, .5f))
+        assertEquals("space above play tip", background, sample(1, .7f, .2f))
+        bitmap.recycle()
+    }
+
+    @Test fun fallbackGlyphWidthMismatchKeepsItsRightStrokeAndTheNextCell() {
+        val frame = TerminalFrame(arrayOf(row("\u4e2d\u2588", fill = background)),
+            intArrayOf(2, 1, 0, 0, 0, background, red, 2))
+        frame.rows[0]!!.cells[9] = green
+        val view = view(frame.rows[0]!!).apply { this.frame = frame }
+        val bitmap = render(view)
+        val next = colorBounds(bitmap, green)
+        val glyph = colorBounds(bitmap, red)
+        assertFalse(glyph.isEmpty)
+        assertEquals("the adjacent cell keeps its full background and position", next.left, next.width())
+        assertTrue("the complete glyph must leave its right side bearing before the next cell",
+            glyph.right < next.left)
+        bitmap.recycle()
+    }
+
     @Test fun liveLocalAndSshPainterMatchesPcColorsAndMixedWidthPlacement() {
         val theme = intArrayOf(Color.WHITE, background, Color.WHITE) + IntArray(16) { Color.RED }
         val frame = decodeDesktopScreen(JSONObject("""{"version":1,"columns":8,"rows":[
