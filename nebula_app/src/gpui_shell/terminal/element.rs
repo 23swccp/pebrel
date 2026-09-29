@@ -100,20 +100,18 @@ impl TerminalElement {
         let session = view.session.as_ref()?;
         let hint_config = view.hint_config.clone();
         let term = session.term.lock();
-        #[cfg(windows)]
         let prompt_line = if term.mode().intersects(TermMode::ALT_SCREEN | TermMode::VI) {
             None
         } else {
             let cursor = term.grid().cursor.point;
-            crate::display::nebula_input_from_raw_grid(
+            crate::display::nebula_prompt_line_from_raw_grid(
                 &term,
                 cursor,
                 &view.suggest.line_buf,
                 &view.suggest.suggest_env,
             )
+            .map(|line| line.input)
         };
-        #[cfg(not(windows))]
-        let prompt_line = None;
         // 分段只反映内容与宽度类，绝不掺入光标状态：per-cell 绘制下反色只是
         // 换色，若让闪烁相位改变分段，整行会随闪烁重塑形而跳字。
         let snapshot = RenderSnapshot::capture(
@@ -326,7 +324,7 @@ impl Element for TerminalElement {
         let suggest_anchor =
             snap.cursor.as_ref().map(|cursor| (cursor.row as usize, cursor.col as usize));
         self.view.update(cx, |view, cx| {
-            view.refresh_suggestion_from_snapshot(prompt_line, suggest_anchor);
+            view.refresh_suggestion_from_snapshot(prompt_line, suggest_anchor, cx);
             // 补齐只会**登记**要问哪个来宾/远端目录（按键路径上不做 IO），
             // 真正的往返在这里派出去。
             view.drive_pending_remote_dir(cx);

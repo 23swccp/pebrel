@@ -27,7 +27,6 @@ impl TerminalView {
             return;
         }
         self.suggest.pending_command_prompt = None;
-        #[cfg(windows)]
         if let Some(session) = &self.session {
             let term = session.term.lock();
             if !term.mode().intersects(TermMode::ALT_SCREEN | TermMode::VI) {
@@ -141,51 +140,71 @@ impl TerminalView {
         &mut self,
         line: Option<String>,
         anchor: Option<(usize, usize)>,
+        cx: &mut Context<Self>,
     ) {
-        #[cfg(windows)]
+        if self.exited.is_some()
+            || !self.ghost_enabled
+            || self.session.is_none()
+            || matches!(self.ssh_stage, Some(crate::ssh_session::SshStage::Failed(_)))
         {
-            if self.exited.is_some()
-                || !self.ghost_enabled
-                || matches!(self.ssh_stage, Some(crate::ssh_session::SshStage::Failed(_)))
-            {
-                self.suggest_anchor = None;
-                self.suggest.clear_completion_hints();
-                self.completion_viewport.clear();
-                return;
-            }
-            if self.session.is_none() {
-                self.suggest_anchor = None;
-                self.suggest.clear_completion_hints();
-                self.completion_viewport.clear();
-                return;
-            }
-            match line {
-                Some(line) => {
-                    self.suggest_anchor = anchor;
-                    self.suggest.screen_line = line.clone();
-                    suggest::update(
-                        &mut self.suggest,
-                        Some(line),
-                        self.ghost_enabled,
-                        self.completion_style,
-                    );
-                    self.completion_viewport.update_query(
-                        &self.suggest.screen_line,
-                        self.suggest.completion_items.len(),
-                    );
-                },
-                None => {
-                    self.suggest_anchor = None;
-                    self.suggest.screen_line.clear();
-                    self.suggest.clear_completion_hints();
-                    self.completion_viewport.clear();
-                },
-            }
+            self.suggestion_task = None;
+            self.suggest_anchor = None;
+            self.suggest.clear_completion_hints();
+            self.completion_viewport.clear();
+            return;
         }
-        #[cfg(not(windows))]
-        {
-            let _ = (line, anchor);
+        let Some(line) = line.filter(|line| !line.is_empty()) else {
+            self.suggestion_task = None;
+            self.suggest_anchor = None;
+            self.suggest.screen_line.clear();
+            self.suggest.clear_completion_hints();
+            self.completion_viewport.clear();
+            return;
+        };
+        self.suggest_anchor = anchor;
+        self.suggest.screen_line = line.clone();
+        let key = suggest::cache_key(&self.suggest, &line, self.completion_style);
+        if self.suggest.completion_query_matches(&key) {
+            return;
         }
+        self.suggestion_task = None;
+        self.suggest.begin_completion_query(key.clone());
+        self.completion_viewport.update_query(&line, 0);
+        if self.suggest.completion_suppressed_line.as_deref() == Some(line.as_str()) {
+            return;
+        }
+        self.suggest.completion_suppressed_line = None;
+        let cwd = self.suggest.cwd.clone();
+        let env = self.suggest.suggest_env.clone();
+        let style = self.completion_style;
+        let request_cwd = cwd.clone();
+        let request_env = env.clone();
+        // 本地目录也可能位于慢盘/网络挂载；扫描和历史首次加载都不能进入绘制回调。
+        let calculation = cx.background_spawn(async move {
+            suggest::calculate(request_cwd, request_env, line, style)
+        });
+        self.suggestion_task = Some(cx.spawn(async move |this, cx| {
+            let result = calculation.await;
+            let _ = this.update(cx, |view, cx| {
+                // 按键、取消与 shell 切换都会使 key 或环境失效，旧结果不得回填。
+                if !view.suggest.completion_query_matches(&key)
+                    || view.suggest.cwd != cwd
+                    || view.suggest.suggest_env != env
+                    || view.completion_style != style
+                    || !view.ghost_enabled
+                    || view.exited.is_some()
+                {
+                    return;
+                }
+                view.suggest.suggestion = result.ghost;
+                view.suggest.completion_items = result.items;
+                view.suggest.pending_remote_dir = result.pending_remote_dir;
+                view.completion_viewport
+                    .update_query(&view.suggest.screen_line, view.suggest.completion_items.len());
+                view.drive_pending_remote_dir(cx);
+                cx.notify();
+            });
+        }));
     }
 
     /// 补齐登记了一个还没缓存的来宾 / 远端目录时，去后台拉一次。

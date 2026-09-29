@@ -436,6 +436,7 @@ pub struct TerminalView {
     /// 与光标；GPUI 的 render/paint 分两次取锁，因此用此锚点拒绝跨世代组合
     /// （典型是退格回显夹在两次取锁之间造成 ghost 左右跳）。
     pub(super) suggest_anchor: Option<(usize, usize)>,
+    suggestion_task: Option<gpui::Task<()>>,
     ghost_enabled: bool,
     accept: crate::display::AcceptKey,
     completion_style: crate::display::CompletionStyle,
