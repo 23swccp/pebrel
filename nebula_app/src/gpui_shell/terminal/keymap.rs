@@ -634,17 +634,32 @@ mod tests {
     }
 
     #[test]
-    fn macos_plain_symbols_and_ime_text_stay_on_the_text_input_path() {
-        for (key, text) in
-            [("_", "_"), (",", ","), ("/", "/"), ("=", "="), ("，", "，"), ("中", "中")]
-        {
+    fn plain_symbols_and_ime_text_stay_on_the_text_input_path() {
+        for (key, text) in [
+            ("_", "_"),
+            (",", ","),
+            ("/", "/"),
+            ("=", "="),
+            ("，", "，"),
+            ("中", "中"),
+            ("-", "_"),
+            ("1", "!"),
+            (",", "，"),
+            ("n", "你好"),
+        ] {
             let key = Keystroke {
                 modifiers: gpui::Modifiers::default(),
                 key: key.to_owned(),
                 key_char: Some(text.to_owned()),
             };
-            assert_eq!(encode(&key, &TermMode::default()), None, "{key:?}");
-            assert_eq!(encode(&key, &pi_keyboard_mode()), None, "{key:?}");
+            for mode in [
+                TermMode::default(),
+                pi_keyboard_mode(),
+                TermMode::WIN32_INPUT_MODE,
+                TermMode::WIN32_INPUT_MODE | pi_keyboard_mode(),
+            ] {
+                assert_eq!(encode(&key, &mode), None, "{key:?} {mode:?}");
+            }
         }
     }
 
