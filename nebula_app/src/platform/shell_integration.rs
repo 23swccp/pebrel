@@ -94,4 +94,12 @@ mod tests {
         assert!(supports("zsh", &["-l".into()]));
         assert_eq!(supports("bash", &[]), !cfg!(target_os = "macos"));
     }
+
+    #[test]
+    fn zsh_integration_enables_colors_for_macos_bsd_ls() {
+        let zshrc = include_str!("../../res/shell/zshrc");
+        assert!(zshrc.contains("export CLICOLOR=1"));
+        assert!(zshrc.contains("LSCOLORS:=GxFxCxDxBxegedabagaced"));
+        assert!(zshrc.contains("alias ls='ls -G'"));
+    }
 }

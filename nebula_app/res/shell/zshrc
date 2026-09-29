@@ -6,6 +6,20 @@ fi
 if [[ -r ${ZDOTDIR-$HOME}/.zshrc ]]; then
     source "${ZDOTDIR-$HOME}/.zshrc"
 fi
+
+# macOS's BSD `ls` only emits ANSI colors when both CLICOLOR and the `-G`
+# option are enabled. Pebrel uses its own TERM_PROGRAM value, so the system
+# zsh defaults do not enable this automatically. Apply the defaults after the
+# user's rc file while preserving custom colors and an existing `ls` alias.
+if [[ "$OSTYPE" == darwin* ]]; then
+    export CLICOLOR=1
+    : ${LSCOLORS:=GxFxCxDxBxegedabagaced}
+    export LSCOLORS
+    if (( $+commands[ls] )) && (( ! $+aliases[ls] )); then
+        alias ls='ls -G'
+    fi
+fi
+
 unset NEBULA_ZDOTDIR_WAS_SET NEBULA_ORIGINAL_ZDOTDIR NEBULA_ZSH_INTEGRATION
 
 __pebrel_shell_token=$(printf '%s' "${WSL_DISTRO_NAME:+wsl|${WSL_DISTRO_NAME}|}zsh:${HOST:-localhost}:$$:$RANDOM" | base64 | tr -d '\r\n')
