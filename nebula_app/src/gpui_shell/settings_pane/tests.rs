@@ -1,6 +1,6 @@
 use super::*;
 
-#[cfg(all(windows, feature = "gpui-test-support"))]
+#[cfg(feature = "gpui-test-support")]
 #[gpui::test]
 fn environment_refresh_switch_is_searchable_and_persists(cx: &mut gpui::TestAppContext) {
     use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
@@ -28,6 +28,14 @@ fn environment_refresh_switch_is_searchable_and_persists(cx: &mut gpui::TestAppC
     });
     cx.run_until_parked();
     assert_eq!(pane.read_with(cx, |pane, _| pane.active_section), 2);
+    if crate::platform::Platform::current() != crate::platform::Platform::Windows {
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        assert!(cx.debug_bounds("nebula-switch-refresh_environment").is_none());
+        assert!(RuntimeSettings::load().refresh_environment);
+        return;
+    }
     for enabled in [false, true] {
         cx.update(|window, cx| {
             let _ = window.draw(cx);
