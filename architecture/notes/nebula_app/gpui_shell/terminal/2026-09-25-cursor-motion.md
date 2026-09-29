@@ -4,12 +4,12 @@
 Accepted for local implementation, 2026-09-25. Native validation is recorded separately.
 
 ## Context
-The requested opt-in should reproduce silkmux's 90 ms cursor movement without changing terminal input, parsing, or process ownership.
+The requested opt-in provides 90 ms cursor movement without changing terminal input, parsing, or process ownership.
 
 ## Evidence
 `terminal/element.rs` paints directly from `RenderSnapshot`. GPUI provides frame requests and a reduce-motion preference. The pinned vte 0.15 `Processor` buffers synchronized-update bytes until ESU/timeout; `event_loop::tests::animation_snapshots_cannot_observe_a_partial_synchronized_update` exercises the production StreamProcessor and render snapshot across chunk boundaries.
 
-The reference is silkmux `CursorMotionTracker` and its projection retreat guard. Flutter's named easeOutCubic is the cubic Bezier (0.215, 0.61, 0.355, 1), with x tolerance 0.001, not the commonly substituted polynomial.
+Motion tracking guards against transient projection retreats. Flutter's named easeOutCubic is the cubic Bezier (0.215, 0.61, 0.355, 1), with x tolerance 0.001, not the commonly substituted polynomial.
 
 ## Decision
 Each TerminalView owns a motion tracker. It accepts monotonic time, uses cell coordinates and starts a new 90 ms motion from the current visual position. Distances above eight cells snap. Settings/visibility, screen, viewport and metric changes invalidate motion. Blink and terminal hiding remain distinct.
