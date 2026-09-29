@@ -596,11 +596,20 @@ pub fn probe_system_proxy() -> Option<(String, SystemProxySource)> {
     }
 }
 
+/// PowerShell 只在这个变量存在时设置 `WebRequest` / `-Proxy`。
+/// 值必须是 Rust 已经接受的 `http://` URL。SOCKS 不写它，也不改写成 HTTP。
+/// 不进入 `WSLENV`：来宾里没有这套 .NET 默认值。
+const POWERSHELL_HTTP_PROXY: &str = "PEBREL_HTTP_PROXY";
+
 /// 新开的本地终端要带上的代理变量。
 ///
 /// 模式是自定义、并且地址能解析成 HTTP 或 SOCKS 服务器时，直接写入这些变量，
 /// 不看 `use_system_proxy`。跟随系统只在开关打开且 `system_proxy_url` 有值时
 /// 写入。跳板和自定义命令无法表达成环境变量，返回空，终端照常直接启动。
+///
+/// `http_proxy`、`https_proxy`、`all_proxy` 使用同一条已校验 URL，协议不改写。
+/// curl 在协议专用变量存在时忽略 `all_proxy`，所以不能只把原协议留在 `all_proxy`。
+/// HTTP URL 另加 `PEBREL_HTTP_PROXY`，系统代理和自定义地址走同一条标记。
 pub fn terminal_proxy_assignments(
     mode: ProxyMode,
     url: &str,
@@ -613,19 +622,20 @@ pub fn terminal_proxy_assignments(
         _ => None,
     };
     let Some(configured) = chosen else { return Vec::new() };
-    // cmd、Windows PowerShell 5、PowerShell 7 都读这组名字。
-    // http(s)_proxy 用 HTTP 形式：PowerShell 的 WebRequest / HttpClient 和多数
-    // Windows 程序不会走 socks://。all_proxy 保留用户选的协议，给 curl 用。
-    let http = http_proxy_form(&configured);
-    [("http_proxy", http.clone()), ("https_proxy", http), ("all_proxy", configured)]
+    let mut pairs: Vec<(String, String)> = ["http_proxy", "https_proxy", "all_proxy"]
         .into_iter()
-        .map(|(name, value)| (name.to_owned(), value))
-        .collect()
+        .map(|name| (name.to_owned(), configured.clone()))
+        .collect();
+    if strip_prefix_ignore_case(&configured, "http://").is_some() {
+        pairs.push((POWERSHELL_HTTP_PROXY.to_owned(), configured));
+    }
+    pairs
 }
 
 /// 把 [`terminal_proxy_assignments`] 写进子进程环境。同名变量不分大小写替换，
-/// 避免刷新出来的 `http_proxy` 和这里的 `HTTP_PROXY` 各留一份。Windows 上同时
-/// 把变量名并进 `WSLENV`，WSL 标签才能在来宾里看到。返回是否写入了代理。
+/// 避免刷新出来的 `HTTP_PROXY` 和这里的 `http_proxy` 各留一份。三个代理变量
+/// 保留选定协议，并列入 `WSLENV`。SOCKS 会清掉继承来的 `PEBREL_HTTP_PROXY`，
+/// 避免 WebRequest 还指着上一次的 HTTP 代理。返回是否写入了代理。
 pub fn apply_terminal_proxy_env(
     env: &mut HashMap<String, String>,
     mode: ProxyMode,
@@ -637,7 +647,15 @@ pub fn apply_terminal_proxy_env(
     if pairs.is_empty() {
         return false;
     }
-    let names: Vec<String> = pairs.iter().map(|(name, _)| name.clone()).collect();
+    let marks_http = pairs.iter().any(|(name, _)| name.eq_ignore_ascii_case(POWERSHELL_HTTP_PROXY));
+    if !marks_http {
+        env.retain(|key, _| !key.eq_ignore_ascii_case(POWERSHELL_HTTP_PROXY));
+    }
+    let names: Vec<String> = pairs
+        .iter()
+        .filter(|(name, _)| !name.eq_ignore_ascii_case(POWERSHELL_HTTP_PROXY))
+        .map(|(name, _)| name.clone())
+        .collect();
     for (name, value) in pairs {
         env.retain(|key, _| !key.eq_ignore_ascii_case(&name));
         env.insert(name, value);
@@ -666,7 +684,8 @@ pub fn apply_saved_terminal_proxy_env(env: &mut HashMap<String, String>) -> bool
 }
 
 /// 启动程序是 cmd、Windows PowerShell 5.x，还是 PowerShell 7。
-/// 三种都继承上面的环境变量；PowerShell 启动脚本再按版本补自己的代理对象。
+/// 三种都继承上面的环境变量。PowerShell 只在 `PEBREL_HTTP_PROXY` 存在时，
+/// 按版本把这个 HTTP 地址写进 WebRequest 或 `-Proxy`。
 pub fn terminal_shell_kind(program: &str) -> TerminalShellKind {
     let file = program.rsplit(['\\', '/']).next().unwrap_or(program);
     let file = file.to_ascii_lowercase();
@@ -692,17 +711,6 @@ pub enum TerminalShellKind {
     WindowsPowerShell,
     PowerShell7,
     Other,
-}
-
-/// SOCKS URL 换成同一 host:port 的 HTTP 代理。混合端口两种都听；
-/// WebRequest 和 PowerShell 7 的 `-Proxy` 只接受 HTTP。
-fn http_proxy_form(url: &str) -> String {
-    for prefix in ["socks5h://", "socks5://", "socks://"] {
-        if url.len() >= prefix.len() && url[..prefix.len()].eq_ignore_ascii_case(prefix) {
-            return format!("http://{}", &url[prefix.len()..]);
-        }
-    }
-    url.to_owned()
 }
 
 /// 能交给 curl / git 的代理 URL。已带协议的原样保留（含账号）；裸 `host:port`
@@ -1303,9 +1311,10 @@ mod tests {
         let pairs =
             terminal_proxy_assignments(ProxyMode::Custom, "socks5://127.0.0.1:7897", false, None);
         assert_eq!(pairs.len(), 3);
-        assert_eq!(assigned_proxy(&pairs, "HTTP_PROXY"), Some("http://127.0.0.1:7897"));
-        assert_eq!(assigned_proxy(&pairs, "HTTPS_PROXY"), Some("http://127.0.0.1:7897"));
+        assert_eq!(assigned_proxy(&pairs, "HTTP_PROXY"), Some("socks5://127.0.0.1:7897"));
+        assert_eq!(assigned_proxy(&pairs, "HTTPS_PROXY"), Some("socks5://127.0.0.1:7897"));
         assert_eq!(assigned_proxy(&pairs, "ALL_PROXY"), Some("socks5://127.0.0.1:7897"));
+        assert_eq!(assigned_proxy(&pairs, "PEBREL_HTTP_PROXY"), None);
     }
 
     #[test]
@@ -1328,7 +1337,8 @@ mod tests {
             TerminalShellKind::PowerShell7,
         ] {
             let _ = kind;
-            assert_eq!(assigned_proxy(&pairs, "http_proxy"), Some("http://127.0.0.1:7890"));
+            assert_eq!(assigned_proxy(&pairs, "http_proxy"), Some("socks5://127.0.0.1:7890"));
+            assert_eq!(assigned_proxy(&pairs, "https_proxy"), Some("socks5://127.0.0.1:7890"));
             assert_eq!(assigned_proxy(&pairs, "all_proxy"), Some("socks5://127.0.0.1:7890"));
         }
     }
@@ -1342,6 +1352,7 @@ mod tests {
             Some("http://system:1"),
         );
         assert!(custom.iter().all(|(_, value)| value == "http://127.0.0.1:8080"));
+        assert_eq!(assigned_proxy(&custom, "PEBREL_HTTP_PROXY"), Some("http://127.0.0.1:8080"));
         assert!(
             terminal_proxy_assignments(
                 ProxyMode::System,
@@ -1358,6 +1369,7 @@ mod tests {
             Some("http://system:9"),
         );
         assert!(system.iter().all(|(_, value)| value == "http://system:9"));
+        assert_eq!(assigned_proxy(&system, "PEBREL_HTTP_PROXY"), Some("http://system:9"));
         assert!(terminal_proxy_assignments(ProxyMode::System, "", true, None).is_empty());
         assert!(
             terminal_proxy_assignments(
@@ -1382,8 +1394,10 @@ mod tests {
     #[test]
     fn bare_proxy_address_is_exposed_to_terminals_as_socks5() {
         let pairs = terminal_proxy_assignments(ProxyMode::Custom, "127.0.0.1:7890", false, None);
-        assert_eq!(assigned_proxy(&pairs, "http_proxy"), Some("http://127.0.0.1:7890"));
+        assert_eq!(assigned_proxy(&pairs, "http_proxy"), Some("socks5://127.0.0.1:7890"));
+        assert_eq!(assigned_proxy(&pairs, "https_proxy"), Some("socks5://127.0.0.1:7890"));
         assert_eq!(assigned_proxy(&pairs, "all_proxy"), Some("socks5://127.0.0.1:7890"));
+        assert_eq!(assigned_proxy(&pairs, "PEBREL_HTTP_PROXY"), None);
     }
 
     #[test]
@@ -1403,17 +1417,67 @@ mod tests {
         assert_eq!(env.keys().filter(|key| key.eq_ignore_ascii_case("http_proxy")).count(), 1);
         assert_eq!(
             env.iter().find(|(key, _)| key.eq_ignore_ascii_case("http_proxy")).unwrap().1,
-            "http://user:p%40ss@127.0.0.1:7890"
+            "socks5://user:p%40ss@127.0.0.1:7890"
         );
         assert_eq!(
             env.iter().find(|(key, _)| key.eq_ignore_ascii_case("all_proxy")).unwrap().1,
             "socks5://user:p%40ss@127.0.0.1:7890"
         );
+        assert!(env.get("PEBREL_HTTP_PROXY").is_none());
         let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
         assert!(wslenv.split(':').any(|entry| entry == "KEEP/p"));
         assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("http_proxy")));
         assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("https_proxy")));
         assert!(wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("all_proxy")));
+    }
+
+    #[test]
+    fn powershell_marker_follows_http_and_keeps_socks_and_ipv6() {
+        let http = terminal_proxy_assignments(
+            ProxyMode::Custom,
+            "http://user:p%40ss@[::1]:8080",
+            false,
+            None,
+        );
+        assert_eq!(assigned_proxy(&http, "http_proxy"), Some("http://user:p%40ss@[::1]:8080"));
+        assert_eq!(
+            assigned_proxy(&http, "PEBREL_HTTP_PROXY"),
+            Some("http://user:p%40ss@[::1]:8080")
+        );
+        let system_socks = terminal_proxy_assignments(
+            ProxyMode::System,
+            "http://ignored:1",
+            true,
+            Some("socks5://[::1]:1080"),
+        );
+        assert_eq!(assigned_proxy(&system_socks, "https_proxy"), Some("socks5://[::1]:1080"));
+        assert_eq!(assigned_proxy(&system_socks, "PEBREL_HTTP_PROXY"), None);
+
+        let mut env =
+            HashMap::from([("PEBREL_HTTP_PROXY".to_owned(), "http://stale:1".to_owned())]);
+        assert!(apply_terminal_proxy_env(
+            &mut env,
+            ProxyMode::Custom,
+            "socks5h://127.0.0.1:1080",
+            false,
+            None,
+        ));
+        assert_eq!(env.get("http_proxy").map(String::as_str), Some("socks5h://127.0.0.1:1080"));
+        assert!(env.get("PEBREL_HTTP_PROXY").is_none());
+        let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
+        assert!(!wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("PEBREL_HTTP_PROXY")));
+
+        assert!(apply_terminal_proxy_env(
+            &mut env,
+            ProxyMode::System,
+            "",
+            true,
+            Some("HTTP://system:9"),
+        ));
+        assert_eq!(env.get("http_proxy").map(String::as_str), Some("HTTP://system:9"));
+        assert_eq!(env.get("PEBREL_HTTP_PROXY").map(String::as_str), Some("HTTP://system:9"));
+        let wslenv = env.get("WSLENV").expect("proxy names are listed for WSL");
+        assert!(!wslenv.split(':').any(|entry| entry.eq_ignore_ascii_case("PEBREL_HTTP_PROXY")));
     }
 
     #[test]

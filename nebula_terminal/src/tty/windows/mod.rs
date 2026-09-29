@@ -384,22 +384,11 @@ function global:Get-NebulaBoolSetting {
 }
 
 # cmd 不跑这段：它直接继承进程里的 http_proxy / https_proxy / all_proxy。
-# 这里按 PowerShell 自己的版本写变量。5.x 的 Invoke-WebRequest 走 WebRequest；
-# 7.x 走 HttpClient，只认 -Proxy，不认 WebRequest 的默认代理。
-$pebrelProxyUrl = ''
-if ((Get-NebulaSetting 'ssh_proxy_mode' 'off') -eq 'custom') {
-    $pebrelProxyUrl = Get-NebulaSetting 'ssh_proxy_url' ''
-}
-if ($pebrelProxyUrl) {
-    $pebrelHttpProxy = $pebrelProxyUrl
-    if ($pebrelProxyUrl -match '^(?i)(?:socks5h?|socks)://(.+)$') {
-        $pebrelHttpProxy = 'http://' + $Matches[1]
-    } elseif ($pebrelProxyUrl -notmatch '^(?i)https?://') {
-        $pebrelHttpProxy = 'http://' + $pebrelProxyUrl
-    }
-    $env:http_proxy = $pebrelHttpProxy
-    $env:https_proxy = $pebrelHttpProxy
-    $env:all_proxy = $pebrelProxyUrl
+# 协议由 Rust 定好。PEBREL_HTTP_PROXY 只在选定代理本身是 HTTP 时存在，
+# 系统代理和自定义地址共用这一条。SOCKS 不交给 WebRequest。
+# 5.x 的 Invoke-WebRequest 走 WebRequest；7.x 只认 -Proxy。
+if ($env:PEBREL_HTTP_PROXY) {
+    $pebrelHttpProxy = $env:PEBREL_HTTP_PROXY
     $pebrelIsPwsh = ($PSVersionTable.PSEdition -eq 'Core') -or ($PSVersionTable.PSVersion.Major -ge 6)
     try {
         $PSDefaultParameterValues['Invoke-WebRequest:Proxy'] = $pebrelHttpProxy
@@ -1185,12 +1174,13 @@ mod test {
     }
 
     #[test]
-    fn powershell_startup_points_webrequest_at_the_custom_proxy() {
-        assert!(NEBULA_PROMPT_PS1.contains("ssh_proxy_mode"));
-        assert!(NEBULA_PROMPT_PS1.contains("$env:http_proxy"));
+    fn powershell_startup_uses_the_rust_http_proxy_marker() {
+        assert!(NEBULA_PROMPT_PS1.contains("$env:PEBREL_HTTP_PROXY"));
         assert!(NEBULA_PROMPT_PS1.contains("$PSVersionTable.PSEdition"));
         assert!(NEBULA_PROMPT_PS1.contains("[System.Net.WebRequest]::DefaultWebProxy"));
         assert!(NEBULA_PROMPT_PS1.contains("Invoke-WebRequest:Proxy"));
+        assert!(!NEBULA_PROMPT_PS1.contains("ssh_proxy_mode"));
+        assert!(!NEBULA_PROMPT_PS1.contains("ssh_proxy_url"));
     }
 
     /// gpui keymap 在传统 VT 路径把 Ctrl+Backspace 编成 \x17（Ctrl+W）；
