@@ -487,8 +487,15 @@ impl Global for StartupWindow {}
 
 impl StartupWindow {
     pub(crate) fn load(config_file: Option<PathBuf>) -> Self {
-        let Ok(Some(source)) = crate::config::source::discover(config_file) else {
-            return Self::default();
+        let source = match crate::config::source::discover(config_file) {
+            Ok(Some(source)) => source,
+            Ok(None) => return Self::default(),
+            Err(error) => {
+                super::try_write_stderr(format_args!(
+                    "[pebrel:gpui] failed to find window config: {error}"
+                ));
+                return Self::default();
+            },
         };
         match crate::config::load_source(&source) {
             Ok(loaded) => Self::from_config(&loaded.config),
