@@ -49,6 +49,9 @@ or was not scheduled by the PR policy. Every selected native job must succeed;
 failure, cancellation or an unexpected skip cannot produce passing reports.
 Only a genuinely empty plan accepts a skipped native matrix. These reports do not
 reuse earlier runs' conclusions or claim that unscheduled tests executed.
+Reports use `always()` once lint has produced a valid plan: cancelling native
+validation must produce failed reports, not skipped required contexts that GitHub
+accepts. A failed or cancelled lint already blocks merging on its own.
 
 Main pushes, daily scheduled runs, merge groups and manual/reusable workflow
 calls keep all native platforms and release-profile checks. Existing release

@@ -227,7 +227,8 @@ class NativeSuiteTests(unittest.TestCase):
         workflow = (root / ".github/workflows/linux-lua.yml").read_text(encoding="utf-8")
         report = workflow.split("\n  native-checks:\n", 1)[1]
         self.assertIn("needs: [lint, native-tests]", report)
-        self.assertIn("if: ${{ !cancelled() && inputs.windows_diagnostics_run == '' && needs.lint.result == 'success' }}", report)
+        # 必需汇总若随取消一起 skipped，GitHub 会接受这个 skipped 结果。
+        self.assertIn("if: ${{ always() && inputs.windows_diagnostics_run == '' && needs.lint.result == 'success' }}", report)
         self.assertIn("name: ${{ matrix.name }}", report)
         self.assertIn("fromJSON(needs.lint.outputs.check_matrix)", report)
         self.assertIn("runs-on: ubuntu-24.04", report)

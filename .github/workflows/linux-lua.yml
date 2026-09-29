@@ -212,7 +212,7 @@ jobs:
   # 任一已选择的原生任务失败、取消或意外跳过，都不能把汇总标绿。
   native-checks:
     needs: [lint, native-tests]
-    if: ${{ !cancelled() && inputs.windows_diagnostics_run == '' && needs.lint.result == 'success' }}
+    if: ${{ always() && inputs.windows_diagnostics_run == '' && needs.lint.result == 'success' }}
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
