@@ -6,6 +6,7 @@ mod agent_activity;
 mod broadcast;
 mod completion;
 mod confirmation;
+mod conversation;
 pub(super) mod cursor;
 mod cwd_report;
 mod image_paste;
