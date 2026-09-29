@@ -629,6 +629,8 @@ struct WebDavBackend {
 
 fn http_agent() -> ureq::Agent {
     ureq::config::Config::builder()
+        // WebDAV 的 PROPFIND / MKCOL 属于扩展方法，ureq 默认会在发出请求前拒绝它们。
+        .allow_non_standard_methods(true)
         .timeout_global(Some(Duration::from_secs(60)))
         .http_status_as_error(false)
         .build()
@@ -1198,6 +1200,73 @@ mod tests {
                 "pebrel-backup-20260812-231000.nbk".to_owned(),
             ]
         );
+    }
+
+    #[test]
+    fn webdav_extension_methods_reach_the_server_and_keep_authentication_errors() {
+        use crate::update_proxy::test_support::{Server, response};
+
+        // 真实请求路径会读取代理环境；只在子测试进程清除它们，避免机器代理接管回环服务。
+        const CHILD: &str = "PEBREL_WEBDAV_LOOPBACK_TEST";
+        if std::env::var_os(CHILD).is_none() {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+            child.args([
+                "--exact",
+                "backup_remote::tests::webdav_extension_methods_reach_the_server_and_keep_authentication_errors",
+                "--nocapture",
+            ]).env(CHILD, "1");
+            for name in [
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "ALL_PROXY",
+                "NO_PROXY",
+                "http_proxy",
+                "https_proxy",
+                "all_proxy",
+                "no_proxy",
+            ] {
+                child.env_remove(name);
+            }
+            let output = child.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        let xml = r#"<d:multistatus xmlns:d="DAV:"><d:response>
+<d:href>/dav/pebrel-backup-20260929-010000.nbk</d:href>
+<d:propstat><d:prop><d:getcontentlength>123</d:getcontentlength></d:prop>
+<d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+</d:response></d:multistatus>"#;
+        let server = Server::start(vec![
+            response("207 Multi-Status", "Content-Type: application/xml\r\n", xml),
+            response("201 Created", "", ""),
+            response("401 Unauthorized", "", ""),
+        ]);
+        let backend = WebDavBackend {
+            url: format!("http://{}/dav", server.address),
+            username: "user".into(),
+            password: "password".into(),
+        };
+        let snapshots = backend.list_details().expect("PROPFIND 必须能真正发送到 WebDAV 服务");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].name, "pebrel-backup-20260929-010000.nbk");
+        assert_eq!(snapshots[0].bytes, Some(123));
+        backend.mkcol().expect("MKCOL 必须能真正创建远端目录");
+        assert!(backend.list_details().unwrap_err().contains("认证失败"));
+
+        let requests = server.finish();
+        assert!(requests[0].1.starts_with("PROPFIND /dav/ HTTP/1.1\r\n"));
+        assert!(requests[1].1.starts_with("MKCOL /dav HTTP/1.1\r\n"));
+        for (_, headers) in requests {
+            assert!(
+                headers.to_ascii_lowercase().contains("authorization: basic dxnlcjpwyxnzd29yza==")
+            );
+        }
     }
 
     #[test]
