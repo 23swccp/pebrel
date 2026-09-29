@@ -157,7 +157,7 @@ jobs:
           target: target/release
           legacy-key: linux
       - name: Build GPUI release binary
-        run: cargo build --locked --release -p nebula --bin pebrel --features gpui-shell --timings
+        run: cargo build --locked --release -p nebula --bin pebrel -p nebula_hook --bin pebrel-hook --features nebula/gpui-shell --timings
       - name: Save compiled workload
         if: ${{ always() && steps.rust-cache.outcome == 'success' && steps.rust-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -294,7 +294,7 @@ jobs:
           target: target/release
           legacy-key: macos
       - name: Build GPUI release binary
-        run: cargo build --locked --release -p nebula --bin pebrel --features gpui-shell --timings
+        run: cargo build --locked --release -p nebula --bin pebrel -p nebula_hook --bin pebrel-hook --features nebula/gpui-shell --timings
       - name: Save compiled workload
         if: ${{ always() && steps.rust-cache.outcome == 'success' && steps.rust-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4

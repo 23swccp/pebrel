@@ -10,7 +10,7 @@ pub(super) fn codex_config_dir() -> Option<PathBuf> {
     if let Some(home) = std::env::var_os("CODEX_HOME") {
         return Some(PathBuf::from(home));
     }
-    Some(PathBuf::from(std::env::var_os("USERPROFILE")?).join(".codex"))
+    Some(crate::platform::dirs::home_dir()?.join(".codex"))
 }
 
 /// Wire codex's `notify` to nebula-hook. Codex has a SINGLE notify slot
@@ -27,7 +27,8 @@ pub fn ensure_codex_notify() -> bool {
     let Ok(Some(_lock)) = crate::atomic_file::try_lock(&path) else { return false };
     let Ok(raw) = std::fs::read_to_string(&path) else { return false }; // no codex → skip
     let Some(helper) = helper_path() else { return false };
-    let helper = helper.display().to_string().replace('\\', "/");
+    let helper = helper.to_string_lossy().into_owned();
+    let helper = if cfg!(windows) { helper.replace('\\', "/") } else { helper };
 
     let Ok(mut doc) = raw.parse::<toml_edit::DocumentMut>() else {
         log::warn!("ai_hook: {} is not valid TOML; left alone", path.display());

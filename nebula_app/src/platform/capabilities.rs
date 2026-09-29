@@ -56,11 +56,11 @@ pub const CAPABILITIES: Capabilities = {
         Capabilities {
             hide_window_on_close: true,
             system_tray: true,
-            launch_at_login: false,
+            launch_at_login: true,
             system_notifications: true,
-            system_bell: false,
+            system_bell: true,
             self_update_install: cfg!(target_os = "macos"),
-            ai_hook_server: false,
+            ai_hook_server: true,
             quick_terminal_hotkey: true,
             system_font_enumeration: true,
             credential_store: true,
@@ -96,9 +96,9 @@ mod tests {
             assert!(CAPABILITIES.credential_store);
             assert!(CAPABILITIES.hide_window_on_close);
             assert!(CAPABILITIES.system_tray);
-            assert!(!CAPABILITIES.system_bell);
+            assert!(CAPABILITIES.system_bell);
             assert_eq!(CAPABILITIES.self_update_install, cfg!(target_os = "macos"));
-            assert!(!CAPABILITIES.ai_hook_server);
+            assert!(CAPABILITIES.ai_hook_server);
             assert!(CAPABILITIES.quick_terminal_hotkey);
             assert!(CAPABILITIES.shell_context_menu);
         }

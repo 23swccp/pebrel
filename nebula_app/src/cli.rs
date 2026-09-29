@@ -318,7 +318,6 @@ pub enum Subcommands {
     NotifyTest,
     /// Install (or --remove) AI hooks plus the Pebrel Runtime Skill for
     /// Codex and Claude Code.
-    #[cfg(windows)]
     SetupAi(SetupAiOptions),
     /// SSH with Pebrel shell integration bootstrapped on the remote host, so
     /// tab icons / spinner / cwd track the program running over the connection

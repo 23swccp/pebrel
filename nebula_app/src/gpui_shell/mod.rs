@@ -172,7 +172,6 @@ pub fn run_shell(
     }
     let _runtime_server = runtime_server;
     let _acrylic = crate::platform::acrylic::RunGuard::default();
-    #[cfg(windows)]
     let _ai_config_guard = crate::ai_hook::spawn_config_guard();
     // 驻留由工作区持有隐藏窗口；真正关闭最后窗口时统一退出并回收服务。
     let application = gpui_platform::application()
@@ -203,6 +202,7 @@ pub fn run_shell(
         );
     });
     crate::tray::shutdown();
+    crate::ai_hook::shutdown();
 }
 
 /// 组件库/主题/快捷键/用户配置的一次性初始化。

@@ -37,12 +37,18 @@ fn write_changed(path: &Path, value: &str) -> io::Result<bool> {
 }
 
 fn probe(args: &[&str]) -> Option<String> {
-    use std::os::windows::process::CommandExt as _;
     let mut output = tempfile::tempfile().ok()?;
-    let mut child = Command::new("cmd.exe")
-        .args(["/d", "/c", "codex"])
+    #[cfg(windows)]
+    let mut command = {
+        let mut command = Command::new("cmd.exe");
+        command.args(["/d", "/c", "codex"]);
+        command
+    };
+    #[cfg(not(windows))]
+    let mut command =
+        Command::new(crate::ai_hook::integrations::executable(crate::ai_agents::AgentKind::Codex)?);
+    let mut child = crate::platform::process::hidden_command(&mut command)
         .args(args)
-        .creation_flags(0x0800_0000)
         .stdin(Stdio::null())
         .stdout(output.try_clone().ok()?)
         .stderr(Stdio::null())
@@ -93,7 +99,8 @@ pub(super) fn ensure_codex_hooks() -> bool {
     let Some(directory) = codex_config_dir().filter(|path| path.is_dir()) else { return false };
     let Some(helper) = helper_path() else { return false };
     let Some(mode) = supported_mode() else { return false };
-    let helper = helper.to_string_lossy().replace('\\', "/");
+    let helper = helper.to_string_lossy().into_owned();
+    let helper = if cfg!(windows) { helper.replace('\\', "/") } else { helper };
     match install(&directory, &helper, mode) {
         Ok(changed) => {
             if changed {
@@ -114,8 +121,12 @@ fn groups(helper: &str, mode: CodexHookMode) -> Value {
     // Codex runs Windows hooks through PowerShell -Command. A quoted path is
     // a string expression until invoked with &, and single quotes keep $, `
     // and other path characters literal. PowerShell escapes ' by doubling it.
-    let command = format!("& '{}' codex {}", helper.replace('\'', "''"), mode.argument());
-    installation::codex_groups(&command, Some(&command), mode)
+    let command = if cfg!(windows) {
+        format!("& '{}' codex {}", helper.replace('\'', "''"), mode.argument())
+    } else {
+        format!("{} codex {}", crate::ai_hook::remote::quote(helper), mode.argument())
+    };
+    installation::codex_groups(&command, cfg!(windows).then_some(command.as_str()), mode)
 }
 
 pub(super) fn installed_at(directory: &Path) -> io::Result<bool> {
@@ -294,6 +305,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn powershell_executes_generated_hooks_with_literal_paths_and_stdin() {
         use std::io::Write as _;
         use std::os::windows::process::CommandExt as _;

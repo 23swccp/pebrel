@@ -830,8 +830,7 @@ impl TerminalView {
     }
 
     fn ring_audible() -> bool {
-        crate::platform::beep();
-        cfg!(windows)
+        crate::platform::beep()
     }
 
     fn flash_bell(&mut self, cx: &mut Context<Self>) {
