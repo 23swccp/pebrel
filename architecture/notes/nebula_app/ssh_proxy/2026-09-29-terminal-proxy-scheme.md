@@ -17,8 +17,9 @@ SOCKS endpoint.
 curl uses a protocol-specific proxy variable ahead of `ALL_PROXY`
 (https://curl.se/docs/manpage.html). An HTTP URL in `http_proxy` therefore
 sends HTTP proxy requests to a SOCKS-only port, and the original scheme left
-in `all_proxy` does not correct it. `System.Net.WebProxy` and PowerShell 7
-`-Proxy` accept an HTTP proxy URL; they do not accept SOCKS.
+in `all_proxy` does not correct it. The managed PowerShell adapter is verified
+with HTTP URLs; other URL schemes remain available through the environment for
+clients whose own networking stack supports them.
 
 ## Decision
 
@@ -44,9 +45,10 @@ Do not add `PEBREL_HTTP_PROXY` to `WSLENV`.
 
 ## Consequences
 
-A SOCKS setting reaches curl and git as SOCKS. PowerShell `Invoke-WebRequest`
-follows it only when the saved address is an HTTP URL. An already open
-terminal does not change. HTTP URL credentials are decoded into native proxy
+A SOCKS setting reaches curl and git as SOCKS. The PowerShell initialization
+overrides request defaults only for an HTTP URL; it leaves other protocols to
+the client's networking stack. An already open terminal does not change.
+HTTP URL credentials are decoded into native proxy
 credentials; they are removed from the URL passed to the request cmdlets. Proxy
 initialization uses a local script scope and does not print credential-bearing
 URLs when initialization fails.
@@ -67,5 +69,5 @@ None.
 
 ## Revisit when
 
-PowerShell can be given a SOCKS proxy without pretending the endpoint speaks
-HTTP.
+The managed adapter gains verified support for another proxy scheme or the
+native request clients change their proxy configuration contracts.
