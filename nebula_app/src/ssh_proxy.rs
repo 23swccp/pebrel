@@ -619,8 +619,12 @@ fn wininet_proxy_url(value: &str) -> Option<String> {
     if value.is_empty() {
         return None;
     }
+    // ProxyPin 等工具可能已写入完整 URL；只给裸地址补协议，避免污染终端环境变量。
+    let with_scheme = |addr: &str, default_scheme: &str| {
+        if addr.contains("://") { addr.to_owned() } else { format!("{default_scheme}://{addr}") }
+    };
     if !value.contains('=') {
-        return Some(format!("http://{value}"));
+        return Some(with_scheme(value, "http"));
     }
     let pick = |wanted: &str| {
         value.split(';').find_map(|part| {
@@ -630,9 +634,9 @@ fn wininet_proxy_url(value: &str) -> Option<String> {
         })
     };
     if let Some(addr) = pick("socks") {
-        return Some(format!("socks5://{addr}"));
+        return Some(with_scheme(&addr, "socks5"));
     }
-    pick("https").or_else(|| pick("http")).map(|addr| format!("http://{addr}"))
+    pick("https").or_else(|| pick("http")).map(|addr| with_scheme(&addr, "http"))
 }
 
 /// WinINET `ProxyOverride`：分号分隔，`<local>` 原样保留给 [`bypassed`] 特判。
@@ -909,6 +913,23 @@ mod tests {
             "有 socks= 用 socks（域名交代理解析）"
         );
         assert_eq!(wininet_proxy_url("  "), None);
+    }
+
+    #[test]
+    fn wininet_proxy_preserves_existing_schemes() {
+        for (value, expected) in [
+            ("http://127.0.0.1:9099", "http://127.0.0.1:9099"),
+            ("  HTTP://127.0.0.1:9099  ", "HTTP://127.0.0.1:9099"),
+            ("socks5h://127.0.0.1:1080", "socks5h://127.0.0.1:1080"),
+            ("http=http://127.0.0.1:9099", "http://127.0.0.1:9099"),
+            ("http=127.0.0.1:7890;https= http://127.0.0.1:9099 ", "http://127.0.0.1:9099"),
+            ("http=http://127.0.0.1:9099;socks=socks5://127.0.0.1:1080", "socks5://127.0.0.1:1080"),
+            ("http://user:p%40ss@[::1]:9099", "http://user:p%40ss@[::1]:9099"),
+        ] {
+            let url = wininet_proxy_url(value).unwrap();
+            assert_eq!(url, expected, "系统代理地址必须只包含原有协议头: {value}");
+            ProxyServer::parse_url(&url).expect("系统代理仍可用于 SSH 连接");
+        }
     }
 
     #[test]

@@ -2,6 +2,7 @@ package io.github.kuddev.pebrel.terminal
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import kotlin.math.max
 
 /** Shared by live terminal sessions and desktop grid mirrors. Never lays out paragraphs. */
@@ -44,10 +45,15 @@ internal object TerminalCellPainter {
                 val procedural = end - start == 1 && TerminalGlyphs.draw(
                     canvas, paint, row.text[start], left, top, width * cellWidth, cellHeight)
                 if (!procedural) {
-                    // Font fallback and CJK glyph advances must not escape the
-                    // cell(s) allocated by the terminal's Unicode width rules.
                     val checkpoint = canvas.save()
                     canvas.clipRect(left, top, next * cellWidth, top + cellHeight)
+                    // Android 回退字体可能把终端的一列符号画成两列；缩放到原单元格，
+                    // 保留完整字形和邻字边界。ASCII 批次仍走原来的零测量路径。
+                    if (end - start != next - x || row.text[start].code !in 32..126) {
+                        val advance = paint.measureText(row.text, start, end)
+                        val allocated = (next - x) * cellWidth
+                        if (advance > allocated) canvas.scale(allocated / advance, 1f, left, top)
+                    }
                     canvas.drawTextRun(row.text, start, end, start, end,
                         left, top + baseline, false, paint)
                     canvas.restoreToCount(checkpoint)
@@ -63,11 +69,11 @@ internal object TerminalCellPainter {
     }
 }
 
-/** Render block and box-drawing characters using cell geometry. */
+/** Render terminal geometry and TUI mode symbols without depending on font coverage. */
 internal object TerminalGlyphs {
     fun draw(canvas: Canvas, paint: Paint, character: Char, x: Float, y: Float, w: Float, h: Float): Boolean {
         val code = character.code
-        if (code !in 0x2580..0x259f && code !in BOX_ARMS) return false
+        if (code !in 0x2580..0x259f && code !in BOX_ARMS && code != 0x23f5 && code != 0x23f8) return false
         val antialias = paint.isAntiAlias
         val alpha = paint.alpha
         paint.isAntiAlias = false
@@ -75,6 +81,18 @@ internal object TerminalGlyphs {
             canvas.drawRect(x + left * w, y + top * h, x + right * w, y + bottom * h, paint)
         }
         when (code) {
+            0x23f5 -> {
+                val checkpoint = canvas.save()
+                canvas.translate(x, y)
+                canvas.scale(w, h)
+                paint.isAntiAlias = true
+                canvas.drawPath(PLAY, paint)
+                canvas.restoreToCount(checkpoint)
+            }
+            0x23f8 -> {
+                rect(.2f, .25f, .4f, .75f)
+                rect(.6f, .25f, .8f, .75f)
+            }
             0x2580 -> rect(0f, 0f, 1f, .5f)
             in 0x2581..0x2588 -> rect(0f, 1f - (code - 0x2580) / 8f, 1f, 1f)
             in 0x2589..0x258f -> rect(0f, 0f, (0x2590 - code) / 8f, 1f)
@@ -110,6 +128,12 @@ internal object TerminalGlyphs {
     }
 
     private val QUADRANTS = intArrayOf(4, 8, 1, 13, 9, 7, 11, 2, 6, 14)
+    private val PLAY = Path().apply {
+        moveTo(.2f, .25f)
+        lineTo(.8f, .5f)
+        lineTo(.2f, .75f)
+        close()
+    }
     private val BOX_ARMS = mapOf(0x2500 to 3, 0x2502 to 12, 0x250c to 10, 0x2510 to 9,
         0x2514 to 6, 0x2518 to 5, 0x251c to 14, 0x2524 to 13, 0x252c to 11, 0x2534 to 7, 0x253c to 15)
 }
