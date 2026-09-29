@@ -834,18 +834,7 @@ impl NebulaWorkspace {
         // 文件变化拆成互相矛盾的 restore/resume 状态。
         let runtime = nebula_settings::RuntimeSettings::load();
         let sidebar_width = runtime.sidebar_width;
-        #[cfg(windows)]
-        {
-            let mut icon_scale = window.scale_factor();
-            cx.observe_window_bounds(window, move |_, window, cx| {
-                windowing::quick_terminal_bounds_changed(runtime_window_id, window, cx);
-                if icon_scale != window.scale_factor() {
-                    icon_scale = window.scale_factor();
-                    crate::gpui_shell::set_native_window_icon(window);
-                }
-            })
-            .detach();
-        }
+        windowing::observe_window_bounds(runtime_window_id, window, cx);
         let initial_grid = windowing::prepare_initial_grid(
             window,
             cx,
@@ -1045,7 +1034,7 @@ impl NebulaWorkspace {
         if let Some(ai_events) = ai_events {
             Self::start_ai_hook_pump(ai_events, cx);
             // 全局热键是进程级单例，只在承载 ai-hook 泵的那扇初始窗口注册一次。
-            Self::start_quick_terminal_hotkey(cx);
+            Self::start_quick_terminal_hotkey(window, cx);
         }
         Self::start_agent_screen_watchdog(cx);
         if let Some(shell_events) = shell_events {

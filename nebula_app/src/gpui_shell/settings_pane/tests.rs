@@ -2,6 +2,43 @@ use super::*;
 
 #[cfg(feature = "gpui-test-support")]
 #[gpui::test]
+fn provider_key_dialog_blocks_clipboard_export_and_cancel_does_not_store(
+    cx: &mut gpui::TestAppContext,
+) {
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
+    });
+    let mut pane = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| SettingsPane::new(window, cx));
+        pane = Some(view.clone());
+        gpui_component::Root::new(view, window, cx)
+    });
+    let pane = pane.unwrap();
+    cx.simulate_resize(gpui::size(px(1100.0), px(900.0)));
+    cx.update(|window, cx| pane.update(cx, |pane, cx| pane.prompt_provider_key(window, cx)));
+    cx.run_until_parked();
+    cx.simulate_input("test-secret-that-must-not-leave-input");
+    cx.write_to_clipboard(gpui::ClipboardItem::new_string("clipboard sentinel".into()));
+    cx.update(|window, cx| {
+        window.dispatch_action(Box::new(gpui_component::input::SelectAll), cx);
+        window.dispatch_action(Box::new(gpui_component::input::Copy), cx);
+        window.dispatch_action(Box::new(gpui_component::input::Cut), cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(cx.read_from_clipboard().unwrap().text().as_deref(), Some("clipboard sentinel"));
+    cx.simulate_keystrokes("escape");
+    cx.run_until_parked();
+    assert!(pane.read_with(cx, |pane, _| pane.provider_key_task.is_none()));
+    assert!(pane.read_with(cx, |pane, _| !matches!(
+        pane.provider_status,
+        Some(ProviderStatus::ApiKeySaved)
+    )));
+}
+
+#[cfg(feature = "gpui-test-support")]
+#[gpui::test]
 fn rename_keymap_row_is_searchable_and_enters_capture(cx: &mut gpui::TestAppContext) {
     cx.update(|cx| {
         gpui_component::init(cx);

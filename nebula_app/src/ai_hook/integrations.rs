@@ -68,24 +68,16 @@ pub(crate) fn inspect() -> Vec<AgentIntegration> {
         .collect()
 }
 
-#[cfg(windows)]
+pub(crate) fn executable(agent: AgentKind) -> Option<PathBuf> {
+    find_executable(agent, &executable_directories())
+}
+
 fn inspect_hook(hook: AgentHook) -> HookInspection {
-    super::win::settings::inspect(hook)
+    super::local::settings::inspect(hook)
 }
 
-#[cfg(not(windows))]
-fn inspect_hook(_: AgentHook) -> HookInspection {
-    HookInspection::default()
-}
-
-#[cfg(windows)]
 pub(crate) fn set_enabled(hook: AgentHook, enabled: bool) -> Result<(), String> {
-    super::win::settings::set_enabled(hook, enabled).map_err(|error| error.to_string())
-}
-
-#[cfg(not(windows))]
-pub(crate) fn set_enabled(_: AgentHook, _: bool) -> Result<(), String> {
-    Err("Automatic hook integration is currently available on Windows only.".into())
+    super::local::settings::set_enabled(hook, enabled).map_err(|error| error.to_string())
 }
 
 fn executable_directories() -> Vec<PathBuf> {
@@ -99,6 +91,9 @@ fn executable_directories() -> Vec<PathBuf> {
             home.join(".bun/bin"),
             home.join(".grok/bin"),
         ]);
+    }
+    if cfg!(target_os = "macos") {
+        paths.extend([PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")]);
     }
     if let Some(appdata) = std::env::var_os("APPDATA") {
         paths.push(PathBuf::from(appdata).join("npm"));

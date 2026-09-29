@@ -1,3 +1,4 @@
+//! Native provider configuration policy, shared by all desktop platforms.
 use super::bridges::{OPENCODE_PLUGIN_JS, PI_EXTENSION_TS};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,7 +16,6 @@ mod kimi;
 mod managed_files;
 mod runtime_skills;
 pub(super) mod settings;
-mod transport;
 use codex_hooks::{ensure_codex_hooks, remove_codex_hooks};
 use codex_notify::{codex_config_dir, ensure_codex_notify, remove_codex_notify};
 pub use config_guard::spawn_config_guard;
@@ -23,9 +23,6 @@ use runtime_skills::{
     ManagedSkillInstall, ManagedSkillRemoval, ensure_runtime_skills, remove_runtime_skill,
     runtime_skill_candidates,
 };
-pub use transport::spawn_gpui_server;
-#[cfg(feature = "legacy-shell")]
-pub use transport::spawn_server;
 
 static ANNOUNCED: AtomicBool = AtomicBool::new(false);
 
@@ -141,6 +138,12 @@ pub fn ensure_claude_hooks() -> bool {
 /// nebula-hook command, healing a stale absolute path in place. `None`
 /// means the document's shape is not what claude documents — refuse.
 fn install_into(root: &mut Value, command: &str) -> Option<bool> {
+    // Unix provider 按 shell 字符串执行；沿用远端安装器的字面量引用规则。
+    let desired_command = if cfg!(windows) {
+        command.to_owned()
+    } else {
+        format!("{} claude", super::remote::quote(command))
+    };
     let obj = root.as_object_mut()?;
     let hooks = obj.entry("hooks").or_insert_with(|| json!({})).as_object_mut()?;
     let mut changed = false;
@@ -157,28 +160,31 @@ fn install_into(root: &mut Value, command: &str) -> Option<bool> {
                 }
                 found = true;
                 let Some(entry) = cmd.as_object_mut() else { continue };
-                if entry.get("command").and_then(Value::as_str) != Some(command) {
-                    entry.insert("command".into(), json!(command));
+                if entry.get("command").and_then(Value::as_str) != Some(&desired_command) {
+                    entry.insert("command".into(), json!(desired_command));
                     changed = true;
                 }
                 // 1.4.0 及更早写的是 shell 形式（引号路径 + 拼在字符串里的
                 // 子命令）。healing 必须补上 args：只改 command 会留下一条
                 // 没有 argv 的裸路径，claude 仍旧交给 shell 解析（#80）。
-                if entry.get("args") != Some(&json!(HELPER_ARGS)) {
+                if cfg!(windows) && entry.get("args") != Some(&json!(HELPER_ARGS)) {
                     entry.insert("args".into(), json!(HELPER_ARGS));
+                    changed = true;
+                } else if cfg!(unix) && entry.remove("args").is_some() {
                     changed = true;
                 }
             }
         }
         if !found {
-            matchers.push(json!({
-                "hooks": [{
+            let mut entry = json!({
                     "type": "command",
-                    "command": command,
-                    "args": HELPER_ARGS,
+                    "command": desired_command,
                     "timeout": 10,
-                }]
-            }));
+            });
+            if cfg!(windows) {
+                entry["args"] = json!(HELPER_ARGS);
+            }
+            matchers.push(json!({"hooks": [entry]}));
             changed = true;
         }
     }
@@ -260,7 +266,7 @@ pub fn setup_ai_cli(remove: bool) -> i32 {
         }
     };
     if !remove && helper_path().is_none() {
-        eprintln!("runtime/ 和 pebrel.exe 同目录中均未找到 pebrel-hook.exe，无法安装。");
+        eprintln!("runtime/ 和 Pebrel 可执行文件同目录中均未找到 Hook 辅助程序，无法安装。");
         return 1;
     }
     let updates = if remove { AgentHook::all_updates(false) } else { AgentHook::setup_updates() };
@@ -340,7 +346,7 @@ fn claude_config_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR") {
         return Some(PathBuf::from(dir));
     }
-    Some(PathBuf::from(std::env::var_os("USERPROFILE")?).join(".claude"))
+    Some(crate::platform::dirs::home_dir()?.join(".claude"))
 }
 
 // ─── opencode plugin (~/.config/opencode/plugins/nebula.js) ─────────────
@@ -352,7 +358,7 @@ fn opencode_config_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
         return Some(PathBuf::from(dir).join("opencode"));
     }
-    Some(PathBuf::from(std::env::var_os("USERPROFILE")?).join(".config").join("opencode"))
+    Some(crate::platform::dirs::home_dir()?.join(".config").join("opencode"))
 }
 
 /// Drop our event-forwarding plugin into opencode's global plugin dir.
@@ -379,7 +385,7 @@ fn pi_agent_dir() -> Option<PathBuf> {
     if let Some(directory) = std::env::var_os("PI_CODING_AGENT_DIR") {
         return Some(PathBuf::from(directory));
     }
-    Some(PathBuf::from(std::env::var_os("USERPROFILE")?).join(".pi").join("agent"))
+    Some(crate::platform::dirs::home_dir()?.join(".pi").join("agent"))
 }
 
 /// Install the bridge only when Pi already has a global agent directory;
@@ -469,7 +475,7 @@ fn report_bridge_install(path: &Path, result: std::io::Result<managed_files::Ins
 /// again (or removed later).
 static HELPER_MISSING_ANNOUNCED: AtomicBool = AtomicBool::new(false);
 
-fn helper_path() -> Option<PathBuf> {
+pub(super) fn helper_path() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let helper = helper_path_from_exe(&exe);
     match helper {
@@ -482,7 +488,7 @@ fn helper_path() -> Option<PathBuf> {
         None => {
             if !HELPER_MISSING_ANNOUNCED.swap(true, Ordering::Relaxed) {
                 log::warn!(
-                    "ai_hook: pebrel-hook.exe missing from runtime/ and executable directory; AI integrations not installed"
+                    "ai_hook: hook helper missing from runtime/ and executable directory; AI integrations not installed"
                 );
             }
             None
@@ -493,14 +499,25 @@ fn helper_path() -> Option<PathBuf> {
 fn helper_path_from_exe(exe: &Path) -> Option<PathBuf> {
     let exe_dir = exe.parent()?;
     // 新包优先使用分类目录，旧同目录位置仅用于开发构建和兼容历史包。
-    [
-        exe_dir.join("runtime").join("pebrel-hook.exe"),
-        exe_dir.join("pebrel-hook.exe"),
-        exe_dir.join("runtime").join("nebula-hook.exe"),
-        exe_dir.join("nebula-hook.exe"),
-    ]
-    .into_iter()
-    .find(|path| path.is_file())
+    let names = ["pebrel-hook", "nebula-hook"]
+        .map(|stem| format!("{stem}{}", std::env::consts::EXE_SUFFIX));
+    names
+        .into_iter()
+        .flat_map(|name| [exe_dir.join("runtime").join(&name), exe_dir.join(name)])
+        .find(|path| {
+            let Ok(metadata) = path.metadata() else { return false };
+            if !metadata.is_file() {
+                return false;
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                // 打包漏掉执行位时不能写入永远无法运行的 Hook。
+                metadata.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(not(unix))]
+            true
+        })
 }
 
 /// The hook entry's `command`: nothing but the helper's absolute path.
@@ -518,7 +535,8 @@ fn helper_path_from_exe(exe: &Path) -> Option<PathBuf> {
 /// Forward slashes stay: `CreateProcess` accepts them and they keep the
 /// entry readable when the user opens `settings.json`.
 fn helper_command() -> Option<String> {
-    Some(helper_path()?.display().to_string().replace('\\', "/"))
+    let path = helper_path()?.to_string_lossy().into_owned();
+    Some(if cfg!(windows) { path.replace('\\', "/") } else { path })
 }
 
 /// Write via tmp + rename (MoveFileEx REPLACE_EXISTING under the hood):
@@ -544,6 +562,36 @@ mod generated_hook_tests {
     use super::{CLAUDE_EVENTS, OPENCODE_PLUGIN_JS, PI_EXTENSION_TS, install_into};
 
     const HELPER: &str = "C:/Program Files/Pebrel/runtime/pebrel-hook.exe";
+
+    #[cfg(unix)]
+    #[test]
+    fn posix_claude_hooks_execute_literal_paths_and_receive_stdin() {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::process::{Command, Stdio};
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("用户's $data `literal` folder");
+        std::fs::create_dir(&parent).unwrap();
+        let helper = parent.join("pebrel-hook");
+        std::fs::write(&helper, "#!/bin/sh\nprintf '%s\\n' \"$@\"\ncat\n").unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut root = json!({});
+        assert_eq!(install_into(&mut root, helper.to_str().unwrap()), Some(true));
+        assert_eq!(install_into(&mut root, helper.to_str().unwrap()), Some(false));
+        let entry = &root["hooks"]["Stop"][0]["hooks"][0];
+        assert!(entry.get("args").is_none());
+        let mut child = Command::new("/bin/sh")
+            .args(["-c", entry["command"].as_str().unwrap()])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(b"{\"hook_event_name\":\"Stop\"}").unwrap();
+        let result = child.wait_with_output().unwrap();
+        assert!(result.status.success());
+        assert_eq!(result.stdout, b"claude\n{\"hook_event_name\":\"Stop\"}");
+        assert!(super::remove_claude_hooks_from(&mut root));
+    }
 
     #[test]
     fn claude_install_and_remove_preserve_commands_that_only_mention_the_helper() {
@@ -586,6 +634,7 @@ mod generated_hook_tests {
     /// token and every hook failed. Exec form (`command` + `args`) is
     /// spawned directly, so no shell parses the path at all.
     #[test]
+    #[cfg(windows)]
     fn claude_hooks_use_exec_form_so_no_shell_parses_the_path() {
         let mut root = json!({});
         assert_eq!(install_into(&mut root, HELPER), Some(true));
@@ -619,8 +668,13 @@ mod generated_hook_tests {
         let start = root["hooks"]["SessionStart"].as_array().expect("matchers");
         assert_eq!(start.len(), 1, "不得为同一事件追加第二条 hook");
         let entry = &start[0]["hooks"][0];
-        assert_eq!(entry["command"], json!(HELPER));
-        assert_eq!(entry["args"], json!(["claude"]));
+        if cfg!(windows) {
+            assert_eq!(entry["command"], json!(HELPER));
+            assert_eq!(entry["args"], json!(["claude"]));
+        } else {
+            assert_eq!(entry["command"], json!(format!("'{HELPER}' claude")));
+            assert!(entry.get("args").is_none());
+        }
         assert_eq!(entry["timeout"], json!(10), "既有字段不能被 healing 丢掉");
         assert_eq!(install_into(&mut root, HELPER), Some(false));
     }
@@ -712,26 +766,47 @@ mod setup_announcement_tests {
 mod runtime_asset_tests {
     use super::helper_path_from_exe;
 
+    fn name(stem: &str) -> String {
+        format!("{stem}{}", std::env::consts::EXE_SUFFIX)
+    }
+
+    fn helper(path: &std::path::Path) {
+        std::fs::write(path, b"fixture").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+
     #[test]
     fn hook_helper_prefers_runtime_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let exe = dir.path().join("pebrel.exe");
+        let exe = dir.path().join(name("pebrel"));
         let runtime = dir.path().join("runtime");
         std::fs::create_dir(&runtime).unwrap();
-        std::fs::write(dir.path().join("nebula-hook.exe"), b"legacy").unwrap();
-        std::fs::write(runtime.join("nebula-hook.exe"), b"structured").unwrap();
-        std::fs::write(runtime.join("pebrel-hook.exe"), b"current").unwrap();
+        helper(&dir.path().join(name("nebula-hook")));
+        helper(&runtime.join(name("nebula-hook")));
+        helper(&runtime.join(name("pebrel-hook")));
 
-        assert_eq!(helper_path_from_exe(&exe), Some(runtime.join("pebrel-hook.exe")));
+        assert_eq!(helper_path_from_exe(&exe), Some(runtime.join(name("pebrel-hook"))));
     }
 
     #[test]
     fn hook_helper_falls_back_to_legacy_sibling() {
         let dir = tempfile::tempdir().unwrap();
-        let exe = dir.path().join("nebula.exe");
-        let legacy = dir.path().join("nebula-hook.exe");
-        std::fs::write(&legacy, b"legacy").unwrap();
+        let exe = dir.path().join(name("nebula"));
+        let legacy = dir.path().join(name("nebula-hook"));
+        helper(&legacy);
 
         assert_eq!(helper_path_from_exe(&exe), Some(legacy));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_executable_helper_is_not_installed_into_agent_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("pebrel-hook"), b"fixture").unwrap();
+        assert!(helper_path_from_exe(&dir.path().join("pebrel")).is_none());
     }
 }

@@ -19,13 +19,15 @@ pub(super) fn path() -> Option<PathBuf> {
 }
 
 fn command(helper: &str, event: &str) -> String {
-    super::extended::encoded_powershell(&format!(
-        "& '{}' cursor --event {event}",
-        helper.replace('\'', "''"),
-    ))
+    super::extended::native_command(helper, "cursor", event)
 }
 
 fn owned(command: &str) -> bool {
+    if EVENTS.iter().any(|(_, event)| {
+        crate::ai_hook::is_helper_shell_command(command, &format!("cursor --event {event}"))
+    }) {
+        return true;
+    }
     let Some(encoded) =
         command.strip_prefix("powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ")
     else {
@@ -152,7 +154,18 @@ mod tests {
         apply_at(&path, HELPER, true).unwrap();
         let installed = std::fs::read_to_string(&path).unwrap();
         assert!(current(&installed, HELPER).unwrap());
-        assert_eq!(installed.matches("EncodedCommand").count(), EVENTS.len());
+        let parsed: Value = serde_json::from_str(&installed).unwrap();
+        for (native, _) in EVENTS {
+            assert_eq!(
+                parsed["hooks"][native]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|entry| { entry["command"].as_str().is_some_and(owned) })
+                    .count(),
+                1
+            );
+        }
         apply_at(&path, HELPER, true).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), installed);
         apply_at(&path, "", false).unwrap();

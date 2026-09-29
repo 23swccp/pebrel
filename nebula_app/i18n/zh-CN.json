@@ -1,4 +1,8 @@
 {
+  "tray": {
+    "show": "显示 Pebrel",
+    "quit": "退出"
+  },
   "notification": {
     "bell": "终端响铃",
     "turn_failed_reason": "请求失败：{error}",

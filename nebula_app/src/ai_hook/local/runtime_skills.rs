@@ -26,7 +26,7 @@ pub(super) enum ManagedSkillRemoval {
 
 pub(super) fn runtime_skill_candidates() -> Vec<(&'static str, PathBuf)> {
     let mut targets = Vec::new();
-    if let Some(profile) = std::env::var_os("USERPROFILE") {
+    if let Some(profile) = crate::platform::dirs::home_dir() {
         targets.push((
             "codex",
             PathBuf::from(profile).join(".agents").join("skills").join("pebrel-runtime"),

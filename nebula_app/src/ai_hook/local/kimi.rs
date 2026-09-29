@@ -38,12 +38,15 @@ pub(super) fn kimi_config_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("KIMI_CODE_HOME") {
         return Some(PathBuf::from(dir));
     }
-    Some(PathBuf::from(std::env::var_os("USERPROFILE")?).join(".kimi-code"))
+    Some(crate::platform::dirs::home_dir()?.join(".kimi-code"))
 }
 
 /// hook 条目的 command：`"<helper 绝对路径>" kimi`。路径用正斜杠，与
 /// claude/codex 条目的写法一致，也避开 TOML 基本字符串里的反斜杠转义。
 fn hook_command(helper: &Path) -> String {
+    if cfg!(unix) {
+        return format!("{} kimi", crate::ai_hook::remote::quote(&helper.to_string_lossy()));
+    }
     format!("\"{}\" kimi", helper.display().to_string().replace('\\', "/"))
 }
 
@@ -257,7 +260,7 @@ mod tests {
     }
 
     fn expected_command() -> String {
-        format!("\"{HELPER}\" kimi")
+        if cfg!(windows) { format!("\"{HELPER}\" kimi") } else { format!("'{HELPER}' kimi") }
     }
 
     fn parse(path: &std::path::Path) -> toml_edit::DocumentMut {
@@ -265,6 +268,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn hook_command_quotes_the_helper_path_for_the_shell() {
         // #80：kimi 的 command 走 shell，含空格路径必须双引号包裹；
         // 反斜杠归一成正斜杠，避免 TOML/shell 双层转义。

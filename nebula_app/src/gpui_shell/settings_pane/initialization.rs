@@ -624,6 +624,7 @@ impl SettingsPane {
             provider_status: None,
             provider_test_seq: 0,
             provider_test_running: false,
+            provider_key_task: None,
             provider_codex_confirm: None,
             ssh_library,
             ssh_hosts: crate::gpui_shell::ssh_hosts::SshHostLists::load(),

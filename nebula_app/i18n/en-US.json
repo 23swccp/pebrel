@@ -1,4 +1,8 @@
 {
+  "tray": {
+    "show": "Show Pebrel",
+    "quit": "Quit"
+  },
   "notification": {
     "bell": "Terminal bell",
     "turn_failed_reason": "Request failed: {error}",
