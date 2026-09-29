@@ -279,6 +279,24 @@ pub fn encode(ks: &Keystroke, mode: &TermMode) -> Option<Vec<u8>> {
     }
     let mods = &ks.modifiers;
 
+    // macOS supplies the layout/IME result in `key_char` while `key` is the
+    // logical key name. A plain printable key must stay on the text input
+    // path so commas, underscores, and non-ASCII IME commits are written
+    // exactly as AppKit produced them instead of being re-encoded as a
+    // terminal shortcut.
+    if !mods.shift
+        && !mods.control
+        && !mods.alt
+        && !mods.platform
+        && !mods.function
+        && ks
+            .key_char
+            .as_deref()
+            .is_some_and(|text| !text.is_empty() && !text.chars().any(char::is_control))
+    {
+        return None;
+    }
+
     #[cfg(windows)]
     if mods.control
         && mods.alt
@@ -613,6 +631,36 @@ mod tests {
     #[test]
     fn unmodified_space_stays_on_the_text_input_path() {
         assert_eq!(encode(&keystroke("space"), &TermMode::default()), None);
+    }
+
+    #[test]
+    fn plain_symbols_and_ime_text_stay_on_the_text_input_path() {
+        for (key, text) in [
+            ("_", "_"),
+            (",", ","),
+            ("/", "/"),
+            ("=", "="),
+            ("，", "，"),
+            ("中", "中"),
+            ("-", "_"),
+            ("1", "!"),
+            (",", "，"),
+            ("n", "你好"),
+        ] {
+            let key = Keystroke {
+                modifiers: gpui::Modifiers::default(),
+                key: key.to_owned(),
+                key_char: Some(text.to_owned()),
+            };
+            for mode in [
+                TermMode::default(),
+                pi_keyboard_mode(),
+                TermMode::WIN32_INPUT_MODE,
+                TermMode::WIN32_INPUT_MODE | pi_keyboard_mode(),
+            ] {
+                assert_eq!(encode(&key, &mode), None, "{key:?} {mode:?}");
+            }
+        }
     }
 
     /// 增强键盘标志是子进程明确要过的线上合同，压过 DECSET 9001
