@@ -40,6 +40,11 @@ workspace = true
 optional = true
 features = ["wayland", "x11"]
 
+[target.'cfg(target_os = "linux")'.dependencies.ashpd]
+version = "=0.13.13"
+default-features = false
+features = ["global_shortcuts"]
+
 [dependencies.gpui-component]
 version = "=0.5.2"
 optional = true
@@ -160,6 +165,8 @@ xdg = "3.0.0"
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 rfd = "0.17.2"
 notify-rust = "=4.18.0"
+# 原生菜单栏 / StatusNotifierItem，复用维护中的系统适配，避免第二套 GTK 事件循环。
+tray-icon = { version = "=0.25.1", default-features = false, features = ["ksni"] }
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 # GPUI 壳只把 winit 当类型库（EventLoopProxy / WindowId / ModifiersState），

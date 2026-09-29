@@ -25,6 +25,8 @@ pub(crate) mod file_picker;
 pub(crate) mod file_preview;
 #[cfg(feature = "gpui-shell")]
 pub mod fonts;
+#[cfg(target_os = "linux")]
+pub(crate) mod global_shortcut;
 #[cfg(all(windows, feature = "gpui-shell"))]
 pub(crate) mod keyboard;
 pub(crate) mod local_paths;
@@ -32,13 +34,19 @@ pub mod notifications;
 pub(crate) mod pi_session;
 pub(crate) mod process;
 pub(crate) mod process_snapshot;
+#[cfg(all(windows, feature = "gpui-shell"))]
+pub(crate) mod quick_window;
 pub mod shell;
 pub mod shell_integration;
 pub(crate) mod ssh_agent;
 pub mod startup;
+#[cfg(unix)]
+pub(crate) mod tray_native;
 pub(crate) mod update_installation;
 #[cfg(feature = "gpui-shell")]
 pub(crate) mod window_chrome;
+#[cfg(all(unix, feature = "gpui-shell"))]
+pub(crate) mod window_visibility;
 pub(crate) mod wsl_hooks;
 
 pub use capabilities::CAPABILITIES;
