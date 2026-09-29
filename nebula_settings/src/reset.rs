@@ -27,6 +27,7 @@ const RESET_KEYS: &[&str] = &[
     "multiline_paste_confirm",
     "tab_close_visible",
     "terminal_proxy",
+    "refresh_environment",
     "powerline",
     "shell",
     "executor",
@@ -226,6 +227,13 @@ mod tests {
         assert!(runtime.font_size_px.is_none());
         assert!(runtime.shell.is_none());
         assert!(crate::keybind_pairs_from_text(&result).is_empty());
+    }
+
+    #[test]
+    fn reset_restores_environment_refresh_without_changing_private_settings() {
+        let restored = default_settings_text("refresh_environment=0\nprivate_key=keep\n");
+        assert_eq!(restored, "private_key=keep\n");
+        assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&restored)).refresh_environment);
     }
 
     #[test]

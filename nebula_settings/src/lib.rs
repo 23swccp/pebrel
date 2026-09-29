@@ -1001,6 +1001,9 @@ pub struct RuntimeSettings {
     /// 终端网络代理：新会话启动时把当前系统代理写入 HTTP_PROXY/HTTPS_PROXY。
     /// 上游默认关 (false) —— fork 侧另起本地 commit 翻成默认开。
     pub terminal_proxy: bool,
+    /// Refresh Windows registry variables for new panes. Disable to inherit the
+    /// launching process environment, including its temporary PATH additions.
+    pub refresh_environment: bool,
     pub powerline: bool,
     /// 默认 shell 的原始 id（`shell=` 原文：powershell/bash/cmd/pwsh/WSL
     /// 发行版等）。解析归 shell 检测层，这里只做持久化往返。
@@ -1173,6 +1176,7 @@ impl RuntimeSettings {
             multiline_paste_confirm: raw.bool_on("multiline_paste_confirm").unwrap_or(true),
             tab_close_visible: raw.bool_on("tab_close_visible").unwrap_or(true),
             terminal_proxy: raw.bool_on("terminal_proxy").unwrap_or(false),
+            refresh_environment: raw.bool_on("refresh_environment").unwrap_or(true),
             powerline: raw.bool_on("powerline").unwrap_or(true),
             shell: raw.value("shell").or_else(|| raw.value("executor")).map(str::to_owned),
             startup_directory: raw.value("startup_directory").map(str::to_owned),
@@ -1323,6 +1327,20 @@ pub fn format_hex_rgb(rgb: Rgb8) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn environment_refresh_defaults_and_round_trips() {
+        for text in ["", "refresh_environment=\n", "refresh_environment=invalid\n"] {
+            assert!(RuntimeSettings::from_raw(&RawSettings::from_text(text)).refresh_environment);
+        }
+        let original = "theme=Nord\nrefresh_environment=1\ncustom=keep\n";
+        let disabled = apply_updates(original, &[("refresh_environment", "0".into())]);
+        assert!(!RuntimeSettings::from_raw(&RawSettings::from_text(&disabled)).refresh_environment);
+        assert!(disabled.contains("custom=keep"));
+        let enabled = apply_updates(&disabled, &[("refresh_environment", "1".into())]);
+        assert!(RuntimeSettings::from_raw(&RawSettings::from_text(&enabled)).refresh_environment);
+        assert_eq!(enabled, original);
+    }
+
     #[test]
     fn pane_preferences_round_trip_and_allow_a_missing_mouse_override() {
         let defaults = RuntimeSettings::from_raw(&RawSettings::default());
