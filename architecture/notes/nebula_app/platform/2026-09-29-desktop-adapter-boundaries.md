@@ -29,6 +29,10 @@ backend, whose DBus work is owned by a worker; no second GTK event loop is added
 Tray callbacks send existing application commands. Snapshot updates coalesce and
 shutdown drops native resources and joins the worker.
 
+Settings may be applied before the native shell is initialized. Such updates only
+record state until the tray callback owner exists; they must not construct AppKit
+menus in a headless workspace or on a test thread.
+
 Wayland global shortcuts use a portal session, including its user authorization
 flow, and close the old session on changes or shutdown. Failed authorization is
 not retried repeatedly without a settings change. X11 and Windows retain the

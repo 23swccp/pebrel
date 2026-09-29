@@ -1,4 +1,8 @@
 {
+  "tray": {
+    "show": "顯示 Pebrel",
+    "quit": "結束"
+  },
   "notification": {
     "bell": "終端機響鈴",
     "turn_failed_reason": "請求失敗：{error}",
