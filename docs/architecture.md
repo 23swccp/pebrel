@@ -21,6 +21,8 @@ to rename all existing directories or create abstract interfaces everywhere.
 | `nebula_terminal` | Grid, VT processing, terminal/PTY behavior | Product panels or GPUI state |
 | `nebula_config`, `nebula_config_derive` | Configuration abstractions and derives | Application orchestration |
 | `nebula-completions` | Completion matching and presentation-independent results | Terminal view ownership |
+| `nebula_app/src/completion.rs` | Completion request snapshots, shared source lifetime and per-pane source selection | A GPUI task owner or a shell interpreter |
+| `nebula_app/src/display/suggest_engine.rs` | Shared candidate calculation from input snapshots; compatibility adapter for pane state | A second source registry or access to the terminal grid during calculation |
 | `nebula_hook` | Small process/lifecycle hook bridge | An application dependency container |
 | `nebula_app/src/i18n` | Static lookup, locale resolution and formatting | Runtime catalog parsing or UI ownership |
 | `nebula_app/src/math` | Parse, validate, layout, compile and cache responsibilities | A duplicated per-shell math engine |
@@ -81,6 +83,15 @@ must be applied only to a still-valid view/session. Renderer callbacks should us
 prepared state, not synchronously reload preferences, scan disks or wait for a child
 process. Measure hot-path effects instead of extrapolating a tiny benchmark to the
 whole product.
+
+Completion follows this boundary: the terminal view captures a verified input line
+and owns its pending task; `completion::Session` prepares an owned request and
+selects permitted sources; shared calculation takes only input/cwd/environment and
+returns candidates plus any remote-directory demand. The UI applies results only
+after checking the current input, environment and mode. Popup selection and viewport
+state remain UI-owned. The existing legacy adapter still accepts pane state, then
+calls the same candidate calculation; it does not gain local Git discovery through
+this extraction. See the [request boundary decision](../architecture/notes/nebula_app/completion/2026-09-30-request-boundary.md).
 
 ## Extension checklist
 

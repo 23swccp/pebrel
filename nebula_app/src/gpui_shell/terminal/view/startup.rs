@@ -355,7 +355,7 @@ impl TerminalView {
             },
             suggest_anchor: None,
             suggestion_task: None,
-            git_completion_cache: Arc::new(crate::git_completion::Cache::default()),
+            completion_session: crate::completion::Session::default(),
             completion_viewport: super::super::completion_viewport::CompletionViewport::default(),
             ghost_enabled,
             completion_style,

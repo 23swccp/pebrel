@@ -76,7 +76,7 @@ impl TerminalView {
     /// line_buf 在光标移动/Tab 补全后就是拼接垃圾，不能进历史。Agent 已在
     /// 前台时保留最初 shell 提示符，内部交互的 Enter 不得覆盖退出证据。
     pub(super) fn commit_line(&mut self, cx: &mut Context<Self>) {
-        self.git_completion_cache.invalidate();
+        self.completion_session.invalidate();
         self.sync_native_prompt();
         let agent_active =
             self.running_program.as_deref().and_then(crate::ai_agents::AgentKind::parse).is_some();
@@ -233,7 +233,12 @@ impl TerminalView {
         self.suggest.screen_line = line.clone();
         let mode = self.completion_style;
         let style = mode.active_style(self.suggest.completion_popup_requested);
-        let key = suggest::cache_key(&self.suggest, &line, style);
+        let key = crate::completion::cache_key(
+            &self.suggest.cwd,
+            &self.suggest.suggest_env,
+            &line,
+            style,
+        );
         if self.suggest.completion_query_matches(&key) {
             return;
         }
@@ -246,25 +251,18 @@ impl TerminalView {
         self.suggest.completion_suppressed_line = None;
         let cwd = self.suggest.cwd.clone();
         let env = self.suggest.suggest_env.clone();
-        let request_cwd = cwd.clone();
-        let request_env = env.clone();
         let cancellation = suggest::Cancellation::default();
         let worker_cancellation = cancellation.clone();
-        // 普通输入不复制启动环境；shell 默认值解析也留在后台。
-        let git = if env.is_this_machine()
-            && matches!(line.split_whitespace().next(), Some("git" | "git.exe"))
-        {
-            self.exec_context.clone().map(|execution| suggest::GitRequest {
-                cache: self.git_completion_cache.clone(),
-                execution,
-            })
-        } else {
-            None
-        };
+        let request = self.completion_session.request(
+            cwd.clone(),
+            env.clone(),
+            line,
+            style,
+            self.exec_context.as_ref(),
+        );
         // 本地目录也可能位于慢盘/网络挂载；扫描和历史首次加载都不能进入绘制回调。
-        let calculation = cx.background_spawn(async move {
-            suggest::calculate(request_cwd, request_env, line, style, worker_cancellation, git)
-        });
+        let calculation =
+            cx.background_spawn(async move { request.calculate(&worker_cancellation) });
         let task = cx.spawn(async move |this, cx| {
             let result = calculation.await;
             let _ = this.update(cx, |view, cx| {
@@ -279,9 +277,9 @@ impl TerminalView {
                 {
                     return;
                 }
-                view.suggest.suggestion = result.ghost;
-                view.suggest.suggestion_edit = result.ghost_edit;
-                view.suggest.completion_items = result.items;
+                view.suggest.suggestion = result.suggestion;
+                view.suggest.suggestion_edit = result.suggestion_edit;
+                view.suggest.completion_items = result.completion_items;
                 if view.suggest.completion_popup_requested
                     && !view.suggest.completion_items.is_empty()
                 {
