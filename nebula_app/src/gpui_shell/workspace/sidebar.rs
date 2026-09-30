@@ -834,7 +834,7 @@ impl NebulaWorkspace {
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let collapsed = self.sidebar_collapsed;
-        if !self.sidebar_fold_armed {
+        if tab_reveal_instant(cx) || !self.sidebar_fold_armed {
             return if collapsed {
                 div().into_any_element()
             } else {
@@ -897,7 +897,7 @@ impl NebulaWorkspace {
                                 } else {
                                     this.sidebar_collapsed = !this.sidebar_collapsed;
                                 }
-                                this.sidebar_fold_armed = true;
+                                this.sidebar_fold_armed = !tab_reveal_instant(cx);
                                 cx.notify();
                             })),
                     )
