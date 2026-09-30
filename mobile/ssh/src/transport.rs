@@ -113,7 +113,7 @@ async fn operate(owner: &Arc<Session>, worker: &mut Worker, mut options: Options
         },
     };
     let (mut reader, writer) = channel.split();
-    let Worker { stdout, stderr, commands, input, sftp, .. } = worker;
+    let Worker { stdout, stderr, commands, input, sftp, queries, .. } = worker;
     let receive = async {
         let mut status = -1;
         for message in early {
@@ -146,11 +146,74 @@ async fn operate(owner: &Arc<Session>, worker: &mut Worker, mut options: Options
     };
     // 文件请求与终端收发是独立 future；同一已认证连接另开子通道，不等待传输才处理按键。
     let files = crate::sftp::serve(&client, sftp);
-    let result = tokio::select! { result = receive => result, result = transmit => result, result = files => result };
+    // 查询与终端、文件传输各有独立通道；探测输出不能混入 PTY 或阻塞键盘。
+    let discovery = async {
+        while let Some((command, mut reply)) = queries.recv().await {
+            if !reply.is_closed() {
+                let result = query(&client, command, &mut reply).await;
+                let _ = reply.send(result);
+            }
+        }
+        std::future::pending::<Result<i32>>().await
+    };
+    let result = tokio::select! { result = receive => result, result = transmit => result,
+    result = files => result, result = discovery => result };
     let _ = timeout(
         Duration::from_secs(1),
         client.disconnect(russh::Disconnect::ByApplication, "", ""),
     )
+    .await;
+    result
+}
+
+async fn query(
+    client: &client::Handle<HostVerifier>,
+    command: String,
+    reply: &mut oneshot::Sender<Result<String>>,
+) -> Result<String> {
+    let mut channel = timeout(Duration::from_secs(4), client.channel_open_session())
+        .await
+        .map_err(|_| Failure("TIMEOUT"))??;
+    let receive = async {
+        channel.exec(true, command.into_bytes()).await?;
+        let mut early = Vec::new();
+        acknowledged(&mut channel, &mut early).await?;
+        let mut output = Vec::new();
+        let mut bytes = 0;
+        let mut status = -1;
+        let mut early = early.into_iter();
+        loop {
+            let message = match early.next() {
+                Some(message) => message,
+                None => channel.wait().await.ok_or(Failure("CHANNEL"))?,
+            };
+            // stderr 也计入预算，避免远端错误输出无限占用查询资源。
+            bytes += message_size(&message);
+            if bytes > 64 * 1024 {
+                return Err(Failure("QUERY_LIMIT"));
+            }
+            match message {
+                ChannelMsg::Data { data } => output.extend_from_slice(&data),
+                ChannelMsg::ExitStatus { exit_status } => status = exit_status as i32,
+                ChannelMsg::Close => break,
+                _ => {},
+            }
+        }
+        let stdout = String::from_utf8(output).map_err(|_| Failure("QUERY_ENCODING"))?;
+        Ok(format!("{status}\n{stdout}"))
+    };
+    let result = tokio::select! {
+        biased;
+        _ = reply.closed() => Err(Failure("CLOSED")),
+        result = timeout(Duration::from_secs(4), receive) =>
+            result.map_err(|_| Failure("TIMEOUT")).and_then(|result| result),
+    };
+    let _ = timeout(Duration::from_secs(1), async {
+        if result.is_err() {
+            let _ = channel.signal(russh::Sig::TERM).await;
+        }
+        channel.close().await
+    })
     .await;
     result
 }

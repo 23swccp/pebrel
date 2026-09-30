@@ -52,6 +52,15 @@ class SshConnection(
         progress(SshStage.OPENING_SHELL)
         session().openExec(command)
     }
+    fun openPtyExec(command: String, columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
+        progress(SshStage.OPENING_SHELL)
+        session().openPtyExec(command, columns, rows, cellWidth, cellHeight)
+    }
+    fun query(command: String): JSONObject {
+        val result = session().query(command)
+        return JSONObject().put("status", result.substringBefore('\n').toInt())
+            .put("stdout", result.substringAfter('\n'))
+    }
     fun input(stderr: Boolean = false): InputStream = session().input(stderr)
     fun output(): OutputStream = session().output
     fun resize(columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) = session().resize(columns, rows, cellWidth, cellHeight)
@@ -69,10 +78,11 @@ class SshConnection(
 }
 
 /** The terminal engine owns VT, IME and selection; the independent russh module supplies bytes. */
-class SshTerminalTransport(private val connection: SshConnection) : SessionTransport {
+class SshTerminalTransport(private val connection: SshConnection, private val command: String? = null) : SessionTransport {
     override fun open(columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
         connection.connect()
-        connection.openShell(columns, rows, cellWidth, cellHeight)
+        if (command == null) connection.openShell(columns, rows, cellWidth, cellHeight)
+        else connection.openPtyExec(command, columns, rows, cellWidth, cellHeight)
     }
     override fun input(): InputStream = connection.input()
     override fun output(): OutputStream = connection.output()

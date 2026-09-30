@@ -36,6 +36,7 @@ class RusshSession private constructor(id: Long) : Closeable {
         NativeSsh.resize(handle(), columns, rows, columns * cellWidth, rows * cellHeight)
     fun awaitExit(): Int = NativeSsh.awaitExit(handle())
     fun sftp(request: String): String = NativeSsh.sftp(handle(), request)
+    fun query(command: String): String = NativeSsh.query(handle(), command)
 
     fun input(stderr: Boolean = false): InputStream = object : InputStream() {
         override fun read(): Int {

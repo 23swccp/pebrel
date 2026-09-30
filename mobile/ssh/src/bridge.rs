@@ -164,6 +164,20 @@ pub extern "system" fn Java_io_github_kuddev_pebrel_ssh_NativeSsh_openPtyExec(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_github_kuddev_pebrel_ssh_NativeSsh_query(
+    mut env: JNIEnv,
+    _object: JObject,
+    id: jlong,
+    command: JString,
+) -> jstring {
+    invoke(&mut env, |env| {
+        let command = string(env, &command)?;
+        let response = runtime().block_on(session::get(id)?.query(command))?;
+        env.new_string(response).map(|value| value.into_raw()).map_err(|_| Failure("INTERNAL"))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_github_kuddev_pebrel_ssh_NativeSsh_read(
     mut env: JNIEnv,
     _object: JObject,
