@@ -662,9 +662,11 @@ fn apply_terminal_proxy_env(
     true
 }
 
-/// 读已保存的网络设置，给即将启动的本地终端补代理变量。已打开的会话不经过这里。
-pub(crate) fn apply_saved_terminal_proxy_env(env: &mut HashMap<String, String>) -> bool {
-    let settings = nebula_settings::RuntimeSettings::load();
+/// 使用启动时的设置快照补代理变量，避免与环境刷新重复读盘。已打开的会话不经过这里。
+pub(crate) fn apply_saved_terminal_proxy_env(
+    env: &mut HashMap<String, String>,
+    settings: &nebula_settings::RuntimeSettings,
+) -> bool {
     let mode = ProxyMode::parse(settings.ssh_proxy_mode.settings_value());
     let system_url = if mode == ProxyMode::System && settings.terminal_proxy {
         probe_system_proxy().map(|(url, _)| url)
