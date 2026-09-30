@@ -21,7 +21,9 @@ pub enum Source {
         directories_only: bool,
     },
     ProjectScripts,
-    SshHosts { jump: bool },
+    SshHosts {
+        jump: bool,
+    },
     WslDistributions,
     Options,
     /// A known free-form value must not receive unrelated history/path candidates.
@@ -34,6 +36,7 @@ pub struct Context {
     pub source: Source,
     pub directories: Vec<String>,
     pub ssh_config: Option<String>,
+    pub ssh_config_expands_home: bool,
     options: &'static [OptionSpec],
     attached: Option<usize>,
     branch_guess: Option<bool>,
@@ -41,12 +44,21 @@ pub struct Context {
 
 impl Context {
     pub fn parse(line: &str, cursor: usize, syntax: ShellSyntax) -> Option<Self> {
-        let input = CommandContext::parse(line, cursor, syntax)?;
+        let input = CommandContext::parse(line, cursor, syntax).or_else(|| {
+            // SSH 的身份文件不改变 cwd；只对其已知参数保留 home 意图给宿主适配层。
+            let input = CommandContext::parse_with_home(line, cursor, syntax)?;
+            let name = input.arguments.first()?;
+            (matches!(name.as_str(), "ssh" | "ssh.exe")
+                || matches!(syntax, ShellSyntax::PowerShell | ShellSyntax::Cmd)
+                    && (name.eq_ignore_ascii_case("ssh") || name.eq_ignore_ascii_case("ssh.exe")))
+            .then_some(input)
+        })?;
         let mut context = Self {
             input,
             source: Source::None,
             directories: Vec::new(),
             ssh_config: None,
+            ssh_config_expands_home: false,
             options: &[],
             attached: None,
             branch_guess: None,
@@ -60,8 +72,11 @@ impl Context {
             let base = context.attached.unwrap_or(0);
             let prefix = context.value_prefix();
             let start = if jump { prefix.rfind(',').map_or(0, |n| n + 1) } else { 0 };
-            let login = prefix[start..].rfind('@').map(|n| start + n + 1)
-                .or_else(|| prefix.starts_with("ssh://").then_some(6)).unwrap_or(start);
+            let login = prefix[start..]
+                .rfind('@')
+                .map(|n| start + n + 1)
+                .or_else(|| prefix.starts_with("ssh://").then_some(6))
+                .unwrap_or(start);
             context.attached = Some(base + login);
         }
         Some(context)

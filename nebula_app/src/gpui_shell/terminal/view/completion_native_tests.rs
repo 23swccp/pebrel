@@ -39,10 +39,29 @@ async fn wait_for(
     .and_then(Err)
 }
 
+async fn type_demo_line(
+    cx: &mut gpui::AsyncApp,
+    window: gpui::AnyWindowHandle,
+    view: &gpui::Entity<TerminalView>,
+    text: &str,
+) -> Result<(), String> {
+    for character in text.chars() {
+        cx.update_window(window, |_, window, cx| {
+            view.update(cx, |view, cx| {
+                view.replace_text_in_range(None, &character.to_string(), window, cx);
+            })
+        })
+        .map_err(|error| error.to_string())?;
+        cx.background_executor().timer(Duration::from_millis(110)).await;
+    }
+    Ok(())
+}
+
 #[test]
 #[ignore = "requires a native desktop, Node/npm, and fresh isolated PEBREL_COMPLETION_QA_DIR/config"]
 fn git_completion_native_shell_end_to_end() {
     let output = PathBuf::from(std::env::var_os("PEBREL_COMPLETION_QA_DIR").expect("QA directory"));
+    let demo = std::env::var("PEBREL_COMPLETION_DEMO").ok();
     assert!(output.is_absolute());
     assert_eq!(
         std::env::var_os("PEBREL_CONFIG_DIR").map(PathBuf::from),
@@ -68,9 +87,16 @@ fn git_completion_native_shell_end_to_end() {
             "Path completion fixture",
         ],
     );
-    for branch in
-        ["qa/inline", "qa/popup", "qa/hybrid", "qa/right", "qa/subcommand", "qa/option", "qa/value"]
-    {
+    for branch in [
+        "qa/inline",
+        "qa/popup",
+        "qa/hybrid",
+        "qa/right",
+        "qa/subcommand",
+        "qa/option",
+        "qa/value",
+        "feature/search-panel",
+    ] {
         crate::git_completion::tests::git(repository.path(), &["branch", branch]);
     }
     for tag in ["release/inline", "release/popup", "release/hybrid", "release/detach"] {
@@ -109,7 +135,7 @@ fn git_completion_native_shell_end_to_end() {
         &["update-ref", "refs/vendor/pre-native-post", "HEAD"],
     );
     let revision = std::fs::read_to_string(repository.path().join(".git/refs/heads/main")).unwrap();
-    let scripts: serde_json::Map<_, _> = ["inline", "popup", "hybrid", "right"]
+    let mut scripts: serde_json::Map<_, _> = ["inline", "popup", "hybrid", "right"]
         .into_iter()
         .map(|mode| {
             (
@@ -120,11 +146,26 @@ fn git_completion_native_shell_end_to_end() {
             )
         })
         .collect();
+    scripts.insert(
+        "build:desktop".into(),
+        serde_json::Value::String(
+            "node -e \"require('fs').writeFileSync('.qa-desktop', 'executed')\"".into(),
+        ),
+    );
     std::fs::write(
         repository.path().join("package.json"),
         serde_json::to_vec(&serde_json::json!({"scripts": scripts})).unwrap(),
     )
     .unwrap();
+    let ssh_config = repository.path().join("qa-ssh-included.conf");
+    std::fs::write(&ssh_config, "Host native-inline native-popup native-hybrid native-right\n  HostName completion.example.invalid\n").unwrap();
+    crate::platform::shell::completion_qa_ssh_config_permissions(&ssh_config);
+    std::fs::write(
+        repository.path().join("qa-ssh.conf"),
+        format!("Include \"{}\"\n", ssh_config.to_string_lossy().replace('\\', "/")),
+    )
+    .unwrap();
+    std::fs::write(repository.path().join("qa common source.txt"), "executed").unwrap();
     let shell = crate::platform::shell::completion_qa_shell(&output);
     let result = Arc::new(Mutex::new(None));
     let after = result.clone();
@@ -143,6 +184,7 @@ fn git_completion_native_shell_end_to_end() {
             focus: false,
             ..Default::default()
         }, |window, cx| {
+            if demo.is_some() { window.set_window_title("Pebrel Completion Demo"); }
             let view = cx.new(|cx| TerminalView::new(9001, (100, 30), TerminalLaunch::Local {
                 cwd: Some(cwd), shell: Some(shell), shell_name: None,
             }, window, cx));
@@ -153,11 +195,29 @@ fn git_completion_native_shell_end_to_end() {
         let terminal = terminal.unwrap();
         cx.spawn(async move |cx| {
             let run = async {
+                if demo.is_some() {
+                    std::fs::write(output.join("ready"), b"ready").map_err(|e| e.to_string())?;
+                    for _ in 0..600 {
+                        if output.join("record").exists() { break; }
+                        cx.background_executor().timer(Duration::from_millis(50)).await;
+                    }
+                    if !output.join("record").exists() { return Err("recorder did not start".into()); }
+                }
                 let mut reports = Vec::new();
                 let mut previous = "ref: refs/heads/main".to_owned();
+                let marker_complete = |name: &str| std::fs::read_to_string(repository.path().join(name)).is_ok_and(|text| {
+                    if name.starts_with(".qa-ssh-") { text.lines().any(|line| line == "hostname completion.example.invalid") }
+                    else if name == ".qa-wsl" { text.trim_start_matches('\u{feff}').trim() == "executed" }
+                    else { text == "executed" }
+                });
+                let distro = crate::platform::shell::registered_wsl_distros(&|| false).into_iter().next();
+                let wsl_case = distro.as_deref().map(|name| {
+                    let prefix: String = name.chars().take(2).collect();
+                    (format!("wsl -d \"{prefix}"), format!("wsl -d \"{name}\""))
+                });
                 // Every case starts from a real prompt, types through EntityInputHandler,
                 // paints candidates, accepts through the keyboard handler, then executes.
-                for (mode, prefix, expected, suffix, branch, marker, right) in [
+                let mut cases = vec![
                     (crate::display::CompletionStyle::Inline, "git switch qa/in", "git switch qa/inline", "", Some("qa/inline"), None, false),
                     (crate::display::CompletionStyle::Popup, "git switch \"qa/po\"", "git switch \"qa/popup\"", "", Some("qa/popup"), None, false),
                     (crate::display::CompletionStyle::Hybrid, "git switch \"qa/hy", "git switch \"qa/hybrid\"", "", Some("qa/hybrid"), None, false),
@@ -185,7 +245,43 @@ fn git_completion_native_shell_end_to_end() {
                     (crate::display::CompletionStyle::Popup, "git checkout auto/ch", "git checkout auto/checkout", "", Some("auto/checkout"), None, false),
                     (crate::display::CompletionStyle::Inline, "git switch auto/pre", "git switch auto/preferred", "", Some("auto/preferred"), None, false),
                     (crate::display::CompletionStyle::Hybrid, "git switch custom/na", "git switch custom/native", "", Some("custom/native"), None, true),
-                ] {
+                    (crate::display::CompletionStyle::Inline, "ssh -G -F qa-ssh.conf native-in", "ssh -G -F qa-ssh.conf native-inline", " > .qa-ssh-inline", None, Some(".qa-ssh-inline"), false),
+                    (crate::display::CompletionStyle::Popup, "ssh -G -F qa-ssh.conf native-po", "ssh -G -F qa-ssh.conf native-popup", " > .qa-ssh-popup", None, Some(".qa-ssh-popup"), false),
+                    (crate::display::CompletionStyle::Hybrid, "ssh -G -F qa-ssh.conf native-hy", "ssh -G -F qa-ssh.conf native-hybrid", " > .qa-ssh-hybrid", None, Some(".qa-ssh-hybrid"), false),
+                    (crate::display::CompletionStyle::Hybrid, "ssh -G -F qa-ssh.conf me@native-ri", "ssh -G -F qa-ssh.conf me@native-right", " > .qa-ssh-right", None, Some(".qa-ssh-right"), true),
+                    (crate::display::CompletionStyle::Inline, "cp \"qa common so", "cp \"qa common source.txt\"", " qa-copied-inline", None, Some("qa-copied-inline"), false),
+                    (crate::display::CompletionStyle::Popup, "cp \"qa common so", "cp \"qa common source.txt\"", " qa-copied-popup", None, Some("qa-copied-popup"), false),
+                    (crate::display::CompletionStyle::Hybrid, "cp \"qa common so", "cp \"qa common source.txt\"", " qa-copied-hybrid", None, Some("qa-copied-hybrid"), true),
+                ];
+                if let Some((prefix, expected)) = &wsl_case {
+                    cases.push((crate::display::CompletionStyle::Popup, prefix.as_str(), expected.as_str(), " --exec /bin/printf executed > .qa-wsl", None, Some(".qa-wsl"), false));
+                }
+                if demo.as_deref() == Some("smart") {
+                    assert!(crate::completion::history_hint_for_test(&crate::nebula_history::HistoryScope::Local, "git switch feature/").is_none());
+                    assert!(crate::completion::history_hint_for_test(&crate::nebula_history::HistoryScope::Local, "npm run build:").is_none());
+                    cases = vec![
+                        (crate::display::CompletionStyle::Popup, "git switch feature/se", "git switch feature/search-panel", "", Some("feature/search-panel"), None, false),
+                        (crate::display::CompletionStyle::Inline, "npm run build:d", "npm run build:desktop", "", None, Some(".qa-desktop"), false),
+                    ];
+                } else if demo.as_deref() == Some("history") {
+                    wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
+                        let term = session.term.lock();
+                        crate::display::nebula_prompt_line_from_raw_grid(&term, term.grid().cursor.point, &view.suggest.line_buf, &view.suggest.suggest_env).is_some_and(|line| line.input.trim().is_empty())
+                    })).await?;
+                    type_demo_line(cx, window.into(), &terminal, "echo deployment finished").await?;
+                    cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
+                        view.on_key_down(&KeyDownEvent { keystroke: gpui::Keystroke::parse("enter").unwrap(), is_held: false, prefer_character_input: false }, window, cx);
+                    })).map_err(|e| e.to_string())?;
+                    cx.background_executor().timer(Duration::from_secs(2)).await;
+                    assert_eq!(crate::completion::history_hint_for_test(&crate::nebula_history::HistoryScope::Local, "echo dep").as_deref(), Some("loyment finished"));
+                    cases = vec![(crate::display::CompletionStyle::Inline, "echo dep", "echo deployment finished", "", None, None, false)];
+                }
+                for (mode, prefix, expected, suffix, branch, marker, right) in cases {
+                    crate::gpui_shell::try_write_stderr(format_args!("native completion case: {mode:?} {prefix}"));
+                    // Windows PowerShell 默认重定向为 UTF-16；证据文件统一显式 UTF-8。
+                    let suffix = if cfg!(windows) && (prefix.starts_with("ssh ") || prefix.starts_with("wsl ")) {
+                        suffix.replace(" > ", " | Out-File -Encoding utf8 ")
+                    } else { suffix.to_owned() };
                     if prefix.starts_with("git checkout --") {
                         std::fs::write(repository.path().join(marker.unwrap()), "modified").map_err(|error| error.to_string())?;
                     }
@@ -198,11 +294,13 @@ fn git_completion_native_shell_end_to_end() {
                     })).await?;
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
                         view.completion_style = mode;
-                        view.replace_text_in_range(None, &prefix, window, cx);
+                        if demo.is_none() { view.replace_text_in_range(None, &prefix, window, cx); }
                     })).map_err(|error| error.to_string())?;
+                    if demo.is_some() { type_demo_line(cx, window.into(), &terminal, &prefix).await?; }
                     let start = std::time::Instant::now();
                     wait_for(cx, window.into(), &terminal, |view| if mode == crate::display::CompletionStyle::Popup { !view.suggest.completion_items.is_empty() } else { !view.suggest.suggestion.is_empty() }).await?;
                     let candidate_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    if demo.is_some() { cx.background_executor().timer(Duration::from_secs(2)).await; }
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
                         assert_eq!(view.suggest.screen_line.trim(), prefix, "candidates must wait for the entire typed prefix");
                         if right {
@@ -220,16 +318,18 @@ fn git_completion_native_shell_end_to_end() {
                         })).map_err(|error| error.to_string())?;
                     }
                     wait_for(cx, window.into(), &terminal, |view| view.suggest.screen_line.trim() == expected).await?;
+                    crate::gpui_shell::try_write_stderr(format_args!("native completion accepted: {expected}"));
+                    if demo.is_some() { cx.background_executor().timer(Duration::from_secs(1)).await; }
                     let head = std::fs::read_to_string(repository.path().join(".git/HEAD")).map_err(|error| error.to_string())?;
                     if head.trim() != previous {
                         return Err("accepting completion executed the command".to_owned());
                     }
-                    if marker.is_some_and(|name| std::fs::read_to_string(repository.path().join(name)).is_ok_and(|text| text == "executed")) {
+                    if marker.is_some_and(marker_complete) {
                         return Err("accepting completion executed a script or restored a file".to_owned());
                     }
                     if !suffix.is_empty() {
                         cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
-                            view.replace_text_in_range(None, suffix, window, cx);
+                            view.replace_text_in_range(None, &suffix, window, cx);
                         })).map_err(|error| error.to_string())?;
                         wait_for(cx, window.into(), &terminal, |view| view.suggest.screen_line.trim() == format!("{expected}{suffix}")).await?;
                     }
@@ -243,7 +343,7 @@ fn git_completion_native_shell_end_to_end() {
                         previous = expected_head;
                     }
                     if let Some(marker) = marker {
-                        wait_for(cx, window.into(), &terminal, |_| std::fs::read_to_string(repository.path().join(marker)).is_ok_and(|text| text == "executed")).await?;
+                        wait_for(cx, window.into(), &terminal, |_| marker_complete(marker)).await.map_err(|error| format!("{error}; marker {marker}: {:?}", std::fs::read(repository.path().join(marker)).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())))?;
                     }
                     if let Some(branch) = branch.filter(|name| name.starts_with("auto/") || name.starts_with("custom/")) {
                         let cwd = repository.path().to_owned();
@@ -254,6 +354,7 @@ fn git_completion_native_shell_end_to_end() {
                         if upstream.trim() != expected { return Err(format!("wrong upstream: {upstream:?}, expected {expected:?}")); }
                     }
                     reports.push(serde_json::json!({"mode": format!("{mode:?}"), "input": prefix, "accepted": expected, "branch": branch, "script_marker": marker, "candidate_ms": candidate_ms, "right": right}));
+                    if demo.is_some() { cx.background_executor().timer(Duration::from_secs(2)).await; }
                 }
                 Ok::<_, String>(reports)
             }.await;
