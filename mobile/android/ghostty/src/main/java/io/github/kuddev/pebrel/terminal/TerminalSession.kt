@@ -38,6 +38,7 @@ class TerminalSession(private val transport: SessionTransport, private val callb
     @Volatile private var geometry = Geometry()
     @Volatile private var palette: IntArray? = null
     @Volatile private var ready = false
+    val isReady: Boolean get() = ready && !closed.get() && !failed.get()
     @Volatile private var visible = false
     @Volatile var frame: TerminalFrame? = null
         private set

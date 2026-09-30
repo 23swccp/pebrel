@@ -662,11 +662,12 @@ class SessionRepository(private val context: Context,
             }
         }
     }
-    fun leaveDesktopPane() {
+    fun leaveDesktopPane(clearOutput: Boolean = false) {
         readGeneration++
         readJob?.cancel()
         desktopReader = null
-        output.value = DesktopOutput()
+        // 只保留最近一帧供页面重建，读取任务仍立即结束；主动关闭时释放它。
+        if (clearOutput) output.value = DesktopOutput()
     }
     fun desktopInput(id: String, pane: DesktopPane): DesktopTerminalInput {
         val client = desktopClients[id]
@@ -755,7 +756,7 @@ class SessionRepository(private val context: Context,
         reconnect.clear()
         resumeChecks.values.forEach(Job::cancel)
         resumeChecks.clear()
-        leaveDesktopPane()
+        leaveDesktopPane(clearOutput = true)
         pendingTrust.values.forEach { it.complete(false) }; pendingTrust.clear()
         trust.value?.answer?.complete(false); trust.value = null
         live.value.forEach { it.terminal.finishIfRunning() }; live.value = emptyList()
@@ -773,7 +774,7 @@ class SessionRepository(private val context: Context,
         reconnect.forget(id)
         resumeChecks.remove(id)?.cancel()
         cancelTrust(id)
-        leaveDesktopPane()
+        if (output.value.target.startsWith("$id:")) leaveDesktopPane(clearOutput = true)
         val client = desktopClients.remove(id)
         computers.value = computers.value.filterNot { it.id == id }
         refreshLanDiscovery()
