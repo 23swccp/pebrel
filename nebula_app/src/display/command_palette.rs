@@ -217,7 +217,6 @@ pub enum PaletteAction {
     OpenSettings,
     OpenSettingsFile,
     ToggleGhost,
-    CycleAccept,
     CycleCompletionStyle,
     PickBackgroundImage,
     CycleBackground,
@@ -1281,7 +1280,9 @@ impl CommandPalette {
 
 fn localized_item_label(item: &PaletteItem, language: super::UiLanguage) -> &'static str {
     use PaletteAction::*;
-    if language == super::UiLanguage::ZhCn {
+    if matches!(item.action, CycleCompletionStyle) {
+        return language.text(crate::i18n::Message::SettingsCompletionCycle);
+    } else if language == super::UiLanguage::ZhCn {
         return item.label;
     }
     match item.action {
@@ -1303,7 +1304,6 @@ fn localized_item_label(item: &PaletteItem, language: super::UiLanguage) -> &'st
         OpenSettings => "Open settings",
         OpenSettingsFile => "Open configuration file",
         ToggleGhost => "Toggle ghost completion",
-        CycleAccept => "Cycle completion accept key",
         CycleCompletionStyle => "Toggle completion style (inline / popup)",
         PickBackgroundImage => "Choose background image...",
         CycleBackground => "Cycle background color",

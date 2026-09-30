@@ -2272,24 +2272,9 @@ impl NebulaWorkspace {
                 self.apply_runtime_settings(cx);
                 self.focus_active(window, cx);
             },
-            PaletteAction::CycleAccept => {
-                let runtime = nebula_settings::RuntimeSettings::load();
-                let next = match runtime.accept.settings_value() {
-                    "right" => "tab",
-                    "tab" => "both",
-                    _ => "right",
-                };
-                let _ = nebula_settings::persist_keys(&[("accept", next.to_owned())]);
-                self.apply_runtime_settings(cx);
-                self.focus_active(window, cx);
-            },
             PaletteAction::CycleCompletionStyle => {
                 let runtime = nebula_settings::RuntimeSettings::load();
-                let next = if runtime.completion_style.settings_value() == "inline" {
-                    "popup"
-                } else {
-                    "inline"
-                };
+                let next = runtime.completion_style.cycle().settings_value();
                 let _ = nebula_settings::persist_keys(&[("completion_style", next.to_owned())]);
                 self.apply_runtime_settings(cx);
                 self.focus_active(window, cx);

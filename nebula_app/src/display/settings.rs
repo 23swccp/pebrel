@@ -173,8 +173,7 @@ pub(super) const LANGUAGE_OPTIONS: &[LanguagePreference] = LanguagePreference::A
 pub(super) const ACCEPT_OPTIONS: [AcceptKey; 3] =
     [AcceptKey::Both, AcceptKey::Tab, AcceptKey::Right];
 
-pub(super) const COMPLETION_STYLE_OPTIONS: [CompletionStyle; 2] =
-    [CompletionStyle::Inline, CompletionStyle::Popup];
+pub(super) const COMPLETION_STYLE_OPTIONS: [CompletionStyle; 3] = CompletionStyle::ALL;
 
 pub(super) const TAB_REVEAL_OPTIONS: [TabRevealMotion; 2] =
     [TabRevealMotion::Slide, TabRevealMotion::Instant];
@@ -437,10 +436,7 @@ fn accept_label(accept: AcceptKey, language: UiLanguage) -> &'static str {
 }
 
 fn completion_style_label(style: CompletionStyle, language: UiLanguage) -> &'static str {
-    match style {
-        CompletionStyle::Inline => language.pick("行内灰字", "Inline ghost"),
-        CompletionStyle::Popup => language.pick("弹窗列表", "Popup list"),
-    }
+    language.completion_style_label(style)
 }
 
 fn backup_protocol_label(

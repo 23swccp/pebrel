@@ -1142,14 +1142,8 @@ impl SettingsPane {
                 cx,
             ))
             .child(self.select_row(
-                "accept",
-                language.pick("补全接受键", "Completion accept key"),
-                help("accept", language),
-                cx,
-            ))
-            .child(self.select_row(
                 "completion_style",
-                language.pick("补全样式", "Completion style"),
+                language.text(crate::i18n::Message::SettingsCompletionMode),
                 help("completion_style", language),
                 cx,
             ));

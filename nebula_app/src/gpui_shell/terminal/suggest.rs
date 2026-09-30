@@ -12,7 +12,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::directory_history::DirectoryHistory;
 use crate::display::suggest_engine::{SuggestSources, suggest_update};
-use crate::display::{AcceptKey, CompletionStyle, NebulaPaneState};
+use crate::display::{CompletionStyle, NebulaPaneState};
 use crate::nebula_history::NebulaHistory;
 
 /// 历史是唯一需要独占可变借用的源（`record` 追加 + 落盘）。目录/PATH
@@ -146,6 +146,7 @@ pub fn popup_take(state: &mut NebulaPaneState) -> Option<crate::display::NebulaC
     let insert = state.completion_items.get(index)?.clone();
     state.completion_items.clear();
     state.completion_selected = None;
+    state.completion_popup_requested = false;
     Some(insert)
 }
 
@@ -221,14 +222,5 @@ mod tests {
         assert_eq!(viewport.offset, 1);
         assert_eq!(state.completion_selected, Some(0));
         assert_eq!(popup_take(&mut state).map(|item| item.insert).as_deref(), Some(" upstream"));
-    }
-}
-
-/// 接受键（Tab/Right/Both）的判定复用旧壳 [`AcceptKey`]。
-pub fn accepts(accept: AcceptKey, key: &str) -> bool {
-    match key {
-        "tab" => accept.accepts_tab(),
-        "right" => accept.accepts_right(),
-        _ => false,
     }
 }

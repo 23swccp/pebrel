@@ -17,6 +17,15 @@
     "en_us": "English"
   },
   "settings": {
+    "completion": {
+      "mode": "補齊模式",
+      "cycle": "切換補齊模式",
+      "inline": "行內補齊",
+      "popup": "清單補齊",
+      "hybrid": "混合補齊",
+      "description": "行內和清單模式用 Tab 填入建議；混合模式用右方向鍵接受，Tab 展開清單。",
+      "details": "行內模式在游標後顯示建議。清單模式隨輸入顯示候選，方向鍵選擇、Tab 填入。混合模式先顯示行內建議，Tab 展開清單後用方向鍵選擇、Enter 填入。Esc 關閉清單。接受建議不會執行命令。切換後對已開啟終端立即生效。"
+    },
     "scrolling": {
       "history": "回捲行數",
       "history_description": "每個窗格保留的歷史行數。僅適用於新窗格。",

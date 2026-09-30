@@ -1232,7 +1232,6 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             OpenSettings => self.ctx.nebula_tab(TabRequest::OpenSettings),
             OpenSettingsFile => self.ctx.display().open_user_config_file(),
             ToggleGhost => self.ctx.display().toggle_ghost(),
-            CycleAccept => self.ctx.display().cycle_accept(),
             CycleCompletionStyle => self.ctx.display().cycle_completion_style(),
             PickBackgroundImage => self.ctx.display().pick_background_image(),
             CycleBackground => self.ctx.display().cycle_background_color(),

@@ -438,7 +438,6 @@ pub struct TerminalView {
     pub(super) suggest_anchor: Option<(usize, usize)>,
     suggestion_task: Option<gpui::Task<()>>,
     ghost_enabled: bool,
-    accept: crate::display::AcceptKey,
     completion_style: crate::display::CompletionStyle,
     /// BEL 后暂停侧栏转圈，直到用户再往 PTY 打字（旧壳 `awaiting_input`）。
     awaiting_input: bool,
@@ -897,10 +896,10 @@ impl TerminalView {
         let default_cursor_style = settings.term_config().default_cursor_style;
         let cursor_style_changed = self.default_cursor_style != default_cursor_style;
         self.ghost_enabled = settings.ghost;
-        self.accept = settings.accept;
         self.completion_style = settings.completion_style;
         // 样式/开关热切换即作废当前提示：缓存键留着会挡住新样式的首次重算。
         self.suggest.clear_completion_hints();
+        self.suggest.completion_popup_requested = false;
 
         self.font =
             mono_font(&families[0], FontWeight::NORMAL, FontStyle::Normal, settings.ligatures);
@@ -1132,63 +1131,10 @@ impl TerminalView {
             && !mods.shift
             && self.marked_text.is_none()
             && !mode.contains(TermMode::ALT_SCREEN);
-        if plain {
-            if suggest::popup_active(&self.suggest) {
-                match ks.key.as_str() {
-                    // 候选自动出现时保持未选中，让 Up/Down 继续交给 shell
-                    // 历史；Tab 先建立选中态后，方向键才导航列表。
-                    key @ ("tab" | "down" | "up")
-                        if key == "tab" || self.suggest.completion_selected.is_some() =>
-                    {
-                        suggest::popup_move(&mut self.suggest, if key == "up" { -1 } else { 1 });
-                        let rows = self.completion_popup_geometry().map_or(8, |popup| popup.rows);
-                        self.completion_viewport.reveal(
-                            self.suggest.completion_selected,
-                            self.suggest.completion_items.len(),
-                            rows,
-                        );
-                        cx.notify();
-                        cx.stop_propagation();
-                        return;
-                    },
-                    "escape" => {
-                        if suggest::popup_dismiss(&mut self.suggest) {
-                            self.completion_viewport.clear();
-                            cx.notify();
-                            cx.stop_propagation();
-                            return;
-                        }
-                    },
-                    "enter" => {
-                        if self.accept_completion_popup(cx) {
-                            cx.notify();
-                            cx.stop_propagation();
-                            return;
-                        }
-                    },
-                    "right" if suggest::accepts(self.accept, "right") => {
-                        if self.accept_completion_popup(cx) {
-                            cx.notify();
-                            cx.stop_propagation();
-                            return;
-                        }
-                    },
-                    _ => {},
-                }
-            } else if !self.suggest.suggestion.is_empty()
-                && matches!(ks.key.as_str(), "tab" | "right")
-                && suggest::accepts(self.accept, ks.key.as_str())
-            {
-                // ghost：接受键把余量如同击键般写入，shell 自己回显；Tab 在
-                // 无提示时穿透给 shell 自己的补全（encode 兜底）。
-                let ghost = std::mem::take(&mut self.suggest.suggestion);
-                for c in ghost.chars() {
-                    crate::display::nebula_input_char(&mut self.suggest, c);
-                }
-                self.write_user_text(ghost.clone(), false, ghost.into_bytes(), cx);
-                cx.stop_propagation();
-                return;
-            }
+        if plain && self.handle_completion_key(ks.key.as_str(), cx) {
+            cx.notify();
+            cx.stop_propagation();
+            return;
         }
 
         // 回滚快捷键（对齐旧壳默认绑定，仅主屏）：Shift+PageUp/PageDown

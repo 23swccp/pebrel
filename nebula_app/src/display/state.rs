@@ -16,38 +16,7 @@ pub enum AcceptKey {
     Both,
 }
 
-/// How completion candidates surface while typing: as a single inline ghost
-/// remainder after the cursor, or as a floating list the user picks from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CompletionStyle {
-    #[default]
-    Inline,
-    Popup,
-}
-
-impl CompletionStyle {
-    pub(super) fn cycle(self) -> Self {
-        match self {
-            Self::Inline => Self::Popup,
-            Self::Popup => Self::Inline,
-        }
-    }
-
-    pub(super) fn settings_value(self) -> &'static str {
-        match self {
-            Self::Inline => "inline",
-            Self::Popup => "popup",
-        }
-    }
-
-    pub(super) fn from_settings(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "inline" | "ghost" => Some(Self::Inline),
-            "popup" | "menu" | "list" => Some(Self::Popup),
-            _ => None,
-        }
-    }
-}
+pub use nebula_settings::CompletionStyleName as CompletionStyle;
 
 /// Source of a popup completion candidate; drives the right-aligned tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,6 +200,8 @@ pub struct NebulaPaneState {
     pub completion_items: Vec<NebulaCompletionItem>,
     /// 用户尚未主动导航时不高亮任何候选；这保证 Enter 仍提交原始输入。
     pub completion_selected: Option<usize>,
+    /// 混合模式下由 Tab 打开；随当前提示行结束、接受或取消而释放。
+    pub(crate) completion_popup_requested: bool,
     /// 用户已接受或主动关闭弹窗的整行。只要屏幕行未变化，即使命令目录的
     /// 异步代次更新也不重新弹出；下一次真实输入会自然让行值失配并清除此项。
     pub(crate) completion_suppressed_line: Option<String>,

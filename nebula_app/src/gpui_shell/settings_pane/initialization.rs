@@ -179,15 +179,8 @@ impl SettingsPane {
             cx,
         );
         add_select(
-            "accept",
-            &["right", "tab", "both"],
-            runtime.accept.settings_value(),
-            window,
-            cx,
-        );
-        add_select(
             "completion_style",
-            &["inline", "popup"],
+            &nebula_settings::CompletionStyleName::VALUES,
             runtime.completion_style.settings_value(),
             window,
             cx,
