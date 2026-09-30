@@ -116,8 +116,9 @@ fn git_completion_native_shell_end_to_end() {
                     (crate::display::CompletionStyle::Hybrid, "npm run \"qa:hy", "npm run \"qa:hybrid\"", "", None, Some(".qa-hybrid"), false),
                     (crate::display::CompletionStyle::Hybrid, "npm run qa:ri", "npm run qa:right", "", None, Some(".qa-right"), true),
                 ] {
-                    let prefix = if cfg!(windows) { prefix.replacen("npm ", "npm.cmd ", 1) } else { prefix.to_owned() };
-                    let expected = if cfg!(windows) { expected.replacen("npm ", "npm.cmd ", 1) } else { expected.to_owned() };
+                    let launcher = format!("{} ", crate::platform::shell::completion_qa_package_manager());
+                    let prefix = prefix.replacen("npm ", &launcher, 1);
+                    let expected = expected.replacen("npm ", &launcher, 1);
                     wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
                         let term = session.term.lock();
                         crate::display::nebula_prompt_line_from_raw_grid(&term, term.grid().cursor.point, &view.suggest.line_buf, &view.suggest.suggest_env).is_some_and(|line| line.input.trim().is_empty())
