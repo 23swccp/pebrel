@@ -154,7 +154,7 @@ pub(crate) fn completion_qa_shell(_output: &std::path::Path) -> nebula_terminal:
         let rcfile = _output.join("bashrc");
         std::fs::write(
             &rcfile,
-            "PS1='\\[\\e]133;A\\a\\]QA> \\[\\e]133;B\\a\\]'\nunset PROMPT_COMMAND\n",
+            "PS1='\\[\\e]133;A\\a\\]QA> \\[\\e]133;B\\a\\]'\nunset HISTFILE PROMPT_COMMAND\n",
         )
         .unwrap();
         nebula_terminal::tty::Shell::new(
