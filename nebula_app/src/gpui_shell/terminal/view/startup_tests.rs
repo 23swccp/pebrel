@@ -141,6 +141,57 @@ fn issue_353_history_uses_echoed_command_and_refreshes_on_all_platforms(cx: &mut
 }
 
 #[gpui::test]
+fn issue_358_history_popup_matches_a_command_prefix_without_a_trailing_space(
+    cx: &mut TestAppContext,
+) {
+    let (view, window, receiver) = open(cx);
+    view.update(window, |view, cx| {
+        let scope = crate::nebula_history::HistoryScope::Wsl("issue358-popup".into());
+        view.suggest.suggest_env = crate::display::SuggestEnv::Shell { scope };
+        for command in ["cls;calc", "cls;notepad"] {
+            feed(view, format!("\x1b[2J\x1b[H❯ {command}").as_bytes());
+            view.commit_line(cx);
+            view.process_event(Event::CommandStart, cx);
+            view.process_event(Event::CommandDone { exit_code: Some(0) }, cx);
+        }
+        feed(view, "\x1b[2J\x1b[H❯ cls".as_bytes());
+        view.ghost_enabled = true;
+        view.completion_style = crate::display::CompletionStyle::Popup;
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    window.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            assert_eq!(view.suggest.screen_line, "cls");
+            assert!(view.suggest.suggestion.is_empty());
+            let candidates: Vec<_> =
+                view.suggest.completion_items.iter().map(|item| item.insert.as_str()).collect();
+            assert_eq!(candidates, [";notepad", ";calc"]);
+            view.on_terminal_tab(&TerminalTab, window, cx);
+            assert_eq!(view.suggest.completion_selected, Some(0));
+            view.on_key_down(
+                &KeyDownEvent {
+                    keystroke: gpui::Keystroke::parse("enter").unwrap(),
+                    is_held: false,
+                    prefer_character_input: false,
+                },
+                window,
+                cx,
+            );
+            let input: Vec<u8> = receiver
+                .try_iter()
+                .filter_map(|message| match message {
+                    Msg::Input(bytes) => Some(bytes.into_owned()),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            assert_eq!(input, b";notepad", "accept the candidate without submitting the command");
+        });
+    });
+}
+
+#[gpui::test]
 fn native_shell_suggestion_and_zellij_alternate_screen_keep_their_input(cx: &mut TestAppContext) {
     let (view, window, receiver) = open(cx);
     window.update(|window, cx| {
