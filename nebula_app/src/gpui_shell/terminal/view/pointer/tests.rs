@@ -262,6 +262,57 @@ fn right_click_in_mouse_reporting_apps_still_reaches_the_application(cx: &mut Te
 }
 
 #[gpui::test]
+fn dragging_across_a_rendered_formula_keeps_hit_mapping_and_copies_source(cx: &mut TestAppContext) {
+    let (terminal, mut cx, _) = link_fixture(cx, b"$x^2$ suffix\r\n\r\nprompt> ");
+    let visual_suffix = |terminal: &Entity<TerminalView>, cx: &VisualTestContext| {
+        terminal.read_with(cx, |view, _| {
+            let origin = view.session.as_ref().unwrap().term.lock().viewport_origin_for(view.rows);
+            (0..view.cols)
+                .find(|column| {
+                    view.math.source_point(
+                        TermPoint::new(origin, Column(*column)),
+                        Side::Left,
+                        origin,
+                    ) == (TermPoint::new(origin, Column(5)), Side::Left)
+                })
+                .unwrap()
+        })
+    };
+    // Layout and rasterization run on the owned background executor. Advance
+    // real frames until their cache results become paintable, without sleeping.
+    let mut suffix = 5;
+    for _ in 0..8 {
+        draw(&mut cx);
+        suffix = visual_suffix(&terminal, &cx);
+        if suffix < 5 {
+            break;
+        }
+    }
+    assert!(suffix < 5, "the real rendered frame must compact the formula before selection");
+    let (start, end) = terminal.read_with(&cx, |view, _| {
+        (
+            point(view.origin.x + view.cell_width * 0.25, view.origin.y + view.line_height * 0.5),
+            point(
+                view.origin.x + view.cell_width * (suffix as f32 + 3.75),
+                view.origin.y + view.line_height * 0.5,
+            ),
+        )
+    });
+    cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::default());
+    draw(&mut cx);
+    assert_eq!(visual_suffix(&terminal, &cx), suffix, "selection must not move the suffix");
+    cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+    draw(&mut cx);
+    cx.update(|window, cx| {
+        terminal.update(cx, |view, cx| {
+            assert!(view.copy_selection(true, window, cx));
+        });
+    });
+    assert_eq!(clipboard(&mut cx).as_deref(), Some("$x^2$ suf"));
+}
+
+#[gpui::test]
 fn link_gesture_opens_regex_files_and_osc8_with_or_without_mouse_reporting(
     cx: &mut TestAppContext,
 ) {

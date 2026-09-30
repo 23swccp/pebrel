@@ -800,6 +800,7 @@ impl Element for TerminalElement {
                 bounds.origin,
                 (layout.cell_width.as_f32(), layout.line_height.as_f32()),
                 math_pixels_per_point,
+                Rgba { a: 1.0, ..selection_fill },
                 window,
                 cx,
             );
