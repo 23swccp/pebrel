@@ -249,7 +249,10 @@ class PosixLifecycleTests(unittest.TestCase):
         self.context.start()
         self.capture_descendants()
         process = self.context.process
-        with patch("conformance.posix_process._live_group_members", return_value=[self.descendants[1]]):
+        os.kill(process.pid, signal.SIGKILL)
+        self.context._wait_process(timeout=5)
+        # 保留真实活后代来模拟投递失败，避免伪造的进程表与 Darwin 僵尸状态矛盾。
+        with patch("conformance.harness.os.killpg", return_value=None):
             with self.assertRaises(subprocess.TimeoutExpired):
                 self.context.stop(force=True, timeout=0.1)
         self.assertIs(self.context.process, process)
