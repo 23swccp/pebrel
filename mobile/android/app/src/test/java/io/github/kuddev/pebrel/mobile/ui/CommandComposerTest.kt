@@ -52,6 +52,57 @@ class CommandComposerTest {
         }
     }
 
+    @Test fun keyAuthenticationCanBeSelectedAndRequiresAKeyDocument() {
+        val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
+        compose.setContent {
+            MaterialTheme { HostForm(HostProfile("key-form", "Key host", "127.0.0.1", 22, "test"), {}, false, false, {}, { _, _, _, _ -> }) }
+        }
+        assertTrue(compose.onNodeWithTag("ssh-session-mode").fetchSemanticsNode().boundsInRoot.width <= 240 * context.resources.displayMetrics.density)
+        assertTrue(compose.onNodeWithTag("ssh-auth-mode").fetchSemanticsNode().boundsInRoot.width <= 220 * context.resources.displayMetrics.density)
+        compose.onNodeWithText(context.getString(R.string.auth_key)).performScrollTo().assertIsEnabled().performClick()
+        compose.onNodeWithText(context.getString(R.string.ssh_choose_key)).performScrollTo().assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithText(context.getString(R.string.save_connect)).performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.auth_auto)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.save_connect)).performScrollTo().assertIsEnabled()
+    }
+
+    @Test fun savedKeyFormUsesPassphraseLabelsInsteadOfPasswordLabels() {
+        val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
+        compose.setContent {
+            MaterialTheme { HostForm(HostProfile("saved-key", "Key host", "127.0.0.1", 22, "test",
+                keyUri = "content://fixture/key", keyName = "encrypted-key"), {}, true, false, {}, { _, _, _, _ -> }) }
+        }
+        compose.onNodeWithText(context.getString(R.string.ssh_clear_saved_passphrase)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.ssh_passphrase_saved_hint)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.clear_saved_password)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.password_saved_hint)).assertDoesNotExist()
+    }
+
+    @Test fun compactSegmentsKeepLargeEnglishLabelsAndFortyEightDpTargets() {
+        var chosen by mutableStateOf("production")
+        var scale by mutableFloatStateOf(1f)
+        compose.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, scale)) {
+                MaterialTheme {
+                    Box(Modifier.width(320.dp)) {
+                        ConnectionSegments(listOf("production" to "Production", "development" to "Development"),
+                            chosen, { chosen = it }, Modifier.testTag("compact-segments"), compact = true)
+                    }
+                }
+            }
+        }
+        for (fontScale in listOf(1f, 1.5f)) {
+            compose.runOnIdle { scale = fontScale }
+            val density = ApplicationProvider.getApplicationContext<PebrelApplication>().resources.displayMetrics.density
+            assertTrue(compose.onNodeWithTag("compact-segments").fetchSemanticsNode().boundsInRoot.width <= 280 * density)
+            for (label in listOf("Production", "Development")) {
+                compose.onNode(hasText(label) and hasClickAction()).assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp).performClick()
+            }
+            compose.runOnIdle { assertEquals("development", chosen) }
+        }
+    }
+
     @Test fun defaultComposerExposesShiftTabInTheNarrowShortcutMenu() {
         val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
         val repository = SessionRepository(context)
