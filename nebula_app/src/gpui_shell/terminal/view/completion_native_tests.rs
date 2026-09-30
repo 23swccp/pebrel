@@ -53,34 +53,7 @@ fn git_completion_native_shell_end_to_end() {
     for branch in ["qa/inline", "qa/popup", "qa/hybrid", "qa/right"] {
         crate::git_completion::tests::git(repository.path(), &["branch", branch]);
     }
-    #[cfg(windows)]
-    let shell = {
-        let integrated = nebula_terminal::tty::powershell_with_nebula_integration(
-            "powershell.exe".into(),
-            vec!["-NoLogo".into(), "-NoProfile".into()],
-        );
-        let mut args = integrated.args().to_vec();
-        args.last_mut().unwrap().push_str("; Set-PSReadLineOption -HistorySaveStyle SaveNothing; if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) { Set-PSReadLineOption -PredictionSource None }");
-        nebula_terminal::tty::Shell::new(integrated.program().to_owned(), args)
-    };
-    #[cfg(unix)]
-    let shell = {
-        let rcfile = output.join("bashrc");
-        std::fs::write(
-            &rcfile,
-            "PS1='\\[\\e]133;A\\a\\]QA> \\[\\e]133;B\\a\\]'\nunset PROMPT_COMMAND\n",
-        )
-        .unwrap();
-        nebula_terminal::tty::Shell::new(
-            "bash".into(),
-            vec![
-                "--noprofile".into(),
-                "--rcfile".into(),
-                rcfile.to_string_lossy().into_owned(),
-                "-i".into(),
-            ],
-        )
-    };
+    let shell = crate::platform::shell::completion_qa_shell(&output);
     let result = Arc::new(Mutex::new(None));
     let after = result.clone();
     gpui_platform::application().with_assets(crate::gpui_shell::assets::NebulaAssets).run(move |cx| {
