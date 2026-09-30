@@ -203,6 +203,65 @@ fn clipboard(cx: &mut VisualTestContext) -> Option<String> {
 }
 
 #[gpui::test]
+fn right_click_menu_does_not_paste_and_quick_mode_remains_explicit(cx: &mut TestAppContext) {
+    let (terminal, mut cx, receiver) = link_fixture(cx, b"prompt> ");
+    let requests = Rc::new(Cell::new(0));
+    let count = requests.clone();
+    let _subscription = cx.update(|_, cx| {
+        cx.subscribe(&terminal, move |_, event, _| {
+            if matches!(event, TerminalViewEvent::SelectionContextMenuRequested { .. }) {
+                count.set(count.get() + 1);
+            }
+        })
+    });
+    let point = cell(&terminal, &cx, 2);
+    for (quick, control, expected_requests) in [(false, false, 1), (true, true, 2)] {
+        terminal.update(&mut cx, |view, _| view.copy_on_select = quick);
+        let modifiers = Modifiers { control, ..Modifiers::default() };
+        cx.simulate_mouse_down(point, MouseButton::Right, modifiers);
+        cx.simulate_mouse_up(point, MouseButton::Right, modifiers);
+        draw(&mut cx);
+        assert_eq!(requests.get(), expected_requests);
+        assert!(!receiver.try_iter().any(|message| matches!(message, Msg::Input(_))));
+        assert_eq!(clipboard(&mut cx).as_deref(), Some("before"));
+    }
+    terminal.update(&mut cx, |view, _| view.copy_on_select = true);
+    cx.simulate_mouse_down(point, MouseButton::Right, Modifiers::default());
+    cx.simulate_mouse_up(point, MouseButton::Right, Modifiers::default());
+    draw(&mut cx);
+    assert_eq!(requests.get(), 2);
+    let bytes: Vec<u8> = receiver
+        .try_iter()
+        .filter_map(|message| match message {
+            Msg::Input(bytes) => Some(bytes.into_owned()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(bytes, b"before");
+}
+
+#[gpui::test]
+fn right_click_in_mouse_reporting_apps_still_reaches_the_application(cx: &mut TestAppContext) {
+    let (terminal, mut cx, receiver) = link_fixture(cx, b"\x1b[?1000h\x1b[?1006h");
+    let point = cell(&terminal, &cx, 2);
+    cx.simulate_mouse_down(point, MouseButton::Right, Modifiers::default());
+    cx.simulate_mouse_up(point, MouseButton::Right, Modifiers::default());
+    draw(&mut cx);
+    let bytes: Vec<u8> = receiver
+        .try_iter()
+        .filter_map(|message| match message {
+            Msg::Input(bytes) => Some(bytes.into_owned()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert!(bytes.starts_with(b"\x1b[<2;"));
+    assert!(bytes.ends_with(b"m"), "mouse release is delivered as well");
+    assert!(!bytes.windows(6).any(|slice| slice == b"before"));
+}
+
+#[gpui::test]
 fn link_gesture_opens_regex_files_and_osc8_with_or_without_mouse_reporting(
     cx: &mut TestAppContext,
 ) {
