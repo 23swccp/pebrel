@@ -41,7 +41,9 @@ pub(crate) fn complete(
     context: &Context,
     cancelled: &dyn Fn() -> bool,
 ) -> Vec<Suggestion> {
-    let Source::Branches { include_busy } = context.source else {
+    let (Source::Branches { include_busy } | Source::BranchesAndPaths { include_busy }) =
+        context.source
+    else {
         return Vec::new();
     };
     if cwd.is_empty() || execution.wsl_distribution().is_some() || cancelled() {
