@@ -35,6 +35,16 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [28])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CommandComposerTest {
+    @Test fun scrollbackDefaultsToOneThousandAndPersistsWithinTheDeviceLimit() {
+        val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
+        val preferences = DisplayPreferences(context)
+        assertEquals(1000, preferences.state.value.scrollbackLines)
+        preferences.update { it.copy(scrollbackLines = 50_000) }
+        assertEquals(preferences.maxScrollbackLines, preferences.state.value.scrollbackLines)
+        assertEquals(preferences.state.value.scrollbackLines, DisplayPreferences(context).state.value.scrollbackLines)
+        preferences.update { it.copy(scrollbackLines = 1000) }
+    }
+
     @Test fun fileSymbolsUseDedicatedOutlineResources() {
         val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
         assertNotEquals(fileSymbol("README.md", false), fileSymbol("README.unknown", false))

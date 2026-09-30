@@ -400,7 +400,8 @@ class SessionRepository(private val context: Context,
         terminalColors = value.copyOf()
         live.value.forEach { it.terminal.colors(value) }
     }
-    fun local(): String = addTerminal("Term", "Local", LocalPtyTransport(LocalTerminalStorage.homePath(context)))
+    fun local(): String = addTerminal("Term", "Local", LocalPtyTransport(
+        LocalTerminalStorage.homePath(context), context.filesDir.resolve("terminal").absolutePath))
     fun ssh(host: HostProfile, password: CharArray, attachment: RemoteAttachment? = null): String {
         val id = UUID.randomUUID().toString()
         val command = attachment?.let(RemoteSessions::attachCommand)
@@ -462,7 +463,7 @@ class SessionRepository(private val context: Context,
             override fun onInputRejected(session: TerminalSession) { error.value = "input_rejected" }
 
         }
-        val terminal = TerminalSession(transport, callbacks)
+        val terminal = TerminalSession(transport, callbacks, display.state.value.scrollbackLines)
         live.value = live.value + LocalSession(id, title, source, terminal, host = host, files = files, attachment = attachment)
         SessionService.ensureStarted(context)
         terminal.start()
