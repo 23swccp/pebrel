@@ -192,6 +192,7 @@ pub struct NebulaPaneState {
     /// 这里，由拿得到异步上下文的壳去执行、回填，下一次重算就有候选了。
     pub pending_remote_dir: Option<String>,
     pub suggestion: String,
+    pub(crate) suggestion_edit: Option<NebulaCompletionItem>,
     pub(super) suggestion_key: String,
     /// Popup-style completion candidates for the current line. A non-empty list
     /// stays visible so users can discover completion without an extra action.
@@ -321,6 +322,7 @@ impl NebulaPaneState {
     /// recompute cache, so the next frame re-derives them from the new line.
     pub(crate) fn clear_completion_hints(&mut self) {
         self.suggestion.clear();
+        self.suggestion_edit = None;
         self.suggestion_key.clear();
         self.completion_items.clear();
         self.completion_selected = None;

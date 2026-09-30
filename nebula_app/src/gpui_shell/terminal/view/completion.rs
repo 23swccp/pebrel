@@ -56,6 +56,10 @@ impl TerminalView {
             return true;
         }
         if !self.suggest.suggestion.is_empty() && (key == "right" || key == "tab" && !hybrid) {
+            if let Some(item) = self.suggest.suggestion_edit.take() {
+                self.suggest.suggestion.clear();
+                return self.accept_completion_item(item, cx);
+            }
             let ghost = std::mem::take(&mut self.suggest.suggestion);
             for c in ghost.chars() {
                 crate::display::nebula_input_char(&mut self.suggest, c);
@@ -72,6 +76,7 @@ impl TerminalView {
     /// line_buf 在光标移动/Tab 补全后就是拼接垃圾，不能进历史。Agent 已在
     /// 前台时保留最初 shell 提示符，内部交互的 Enter 不得覆盖退出证据。
     pub(super) fn commit_line(&mut self, cx: &mut Context<Self>) {
+        self.git_completion_cache.invalidate();
         self.sync_native_prompt();
         let agent_active =
             self.running_program.as_deref().and_then(crate::ai_agents::AgentKind::parse).is_some();
@@ -245,9 +250,20 @@ impl TerminalView {
         let request_env = env.clone();
         let cancellation = suggest::Cancellation::default();
         let worker_cancellation = cancellation.clone();
+        // 普通输入不复制启动环境；shell 默认值解析也留在后台。
+        let git = if env.is_this_machine()
+            && matches!(line.split_whitespace().next(), Some("git" | "git.exe"))
+        {
+            self.exec_context.clone().map(|execution| suggest::GitRequest {
+                cache: self.git_completion_cache.clone(),
+                execution,
+            })
+        } else {
+            None
+        };
         // 本地目录也可能位于慢盘/网络挂载；扫描和历史首次加载都不能进入绘制回调。
         let calculation = cx.background_spawn(async move {
-            suggest::calculate(request_cwd, request_env, line, style, worker_cancellation)
+            suggest::calculate(request_cwd, request_env, line, style, worker_cancellation, git)
         });
         let task = cx.spawn(async move |this, cx| {
             let result = calculation.await;
@@ -264,6 +280,7 @@ impl TerminalView {
                     return;
                 }
                 view.suggest.suggestion = result.ghost;
+                view.suggest.suggestion_edit = result.ghost_edit;
                 view.suggest.completion_items = result.items;
                 if view.suggest.completion_popup_requested
                     && !view.suggest.completion_items.is_empty()

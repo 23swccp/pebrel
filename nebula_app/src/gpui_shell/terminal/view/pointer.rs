@@ -329,6 +329,14 @@ impl TerminalView {
     /// 继续透传成一次命令执行。
     pub(super) fn accept_completion_popup(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(item) = suggest::popup_take(&mut self.suggest) else { return false };
+        self.accept_completion_item(item, cx)
+    }
+
+    pub(super) fn accept_completion_item(
+        &mut self,
+        item: crate::display::NebulaCompletionItem,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let insert = item.insert;
         self.completion_viewport.clear();
         let mut before = if self.suggest.screen_line.is_empty() {

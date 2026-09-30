@@ -5,6 +5,8 @@ mod activity_tests;
 mod agent_activity;
 mod broadcast;
 mod completion;
+#[cfg(all(test, feature = "gpui-test-support"))]
+mod completion_native_tests;
 mod confirmation;
 mod conversation;
 pub(super) mod cursor;
@@ -437,6 +439,7 @@ pub struct TerminalView {
     /// （典型是退格回显夹在两次取锁之间造成 ghost 左右跳）。
     pub(super) suggest_anchor: Option<(usize, usize)>,
     suggestion_task: Option<suggest::Pending>,
+    git_completion_cache: Arc<crate::git_completion::Cache>,
     ghost_enabled: bool,
     completion_style: crate::display::CompletionStyle,
     /// BEL 后暂停侧栏转圈，直到用户再往 PTY 打字（旧壳 `awaiting_input`）。

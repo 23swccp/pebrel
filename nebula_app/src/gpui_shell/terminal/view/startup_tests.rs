@@ -86,6 +86,134 @@ fn refresh_completion_from_grid(view: &mut TerminalView, cx: &mut Context<Termin
 }
 
 #[gpui::test]
+fn git_completion_real_repository_reaches_all_modes_and_preserves_quoted_edits(
+    cx: &mut TestAppContext,
+) {
+    use crate::display::CompletionStyle;
+    let repository = crate::git_completion::tests::repository();
+    for mode in [CompletionStyle::Inline, CompletionStyle::Popup, CompletionStyle::Hybrid] {
+        for line in
+            ["git switch feature/中", "git switch \"feature/中\"", "git switch \"feature/中"]
+        {
+            let (view, window, receiver) = open_at(cx, Some(repository.path().to_owned()));
+            view.update(window, |view, cx| {
+                view.exec_context = Some(crate::runtime_exec::PaneExecContext::from_pty_options(
+                    &nebula_terminal::tty::Options {
+                        shell: Some(nebula_terminal::tty::Shell::new("pwsh".into(), vec![])),
+                        working_directory: Some(repository.path().to_owned()),
+                        ..Default::default()
+                    },
+                ));
+                view.suggest.suggest_env = crate::display::SuggestEnv::Local;
+                view.ghost_enabled = true;
+                view.completion_style = mode;
+                feed(view, format!("❯ {line}").as_bytes());
+                refresh_completion_from_grid(view, cx);
+            });
+            window.run_until_parked();
+            view.update(window, |view, _| {
+                assert!(
+                    !view.suggest.suggestion.is_empty() || !view.suggest.completion_items.is_empty(),
+                    "missing Git candidate before acceptance: mode={mode:?} input={line:?} captured={:?} env={:?} cwd={:?} cache={:?}",
+                    view.suggest.screen_line, view.suggest.suggest_env, view.suggest.cwd,
+                    view.git_completion_cache,
+                );
+            });
+            if mode == CompletionStyle::Hybrid {
+                window.update(|window, cx| {
+                    view.update(cx, |view, cx| {
+                        assert!(!view.suggest.suggestion.is_empty());
+                        view.on_terminal_tab(&TerminalTab, window, cx);
+                    })
+                });
+                window.run_until_parked();
+                assert!(
+                    receiver.try_iter().all(|message| !matches!(message, Msg::Input(_))),
+                    "Tab opens without writing to the shell"
+                );
+            }
+            window.update(|window, cx| {
+                view.update(cx, |view, cx| {
+                    if mode == CompletionStyle::Hybrid {
+                        assert_eq!(view.suggest.completion_items[0].label, "feature/中文");
+                        assert!(view.handle_completion_key("enter", cx));
+                    } else {
+                        view.on_terminal_tab(&TerminalTab, window, cx);
+                    }
+                })
+            });
+            let input: Vec<u8> = receiver
+                .try_iter()
+                .filter_map(|message| match message {
+                    Msg::Input(bytes) => Some(bytes.into_owned()),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            assert!(!input.is_empty(), "a real Git candidate must reach PTY input");
+            assert!(
+                !input.contains(&b'\r') && !input.contains(&b'\n'),
+                "acceptance never executes"
+            );
+            let mut accepted = line.to_owned();
+            for ch in String::from_utf8(input).unwrap().chars() {
+                if matches!(ch, '\x08' | '\x7f') {
+                    accepted.pop();
+                } else {
+                    accepted.push(ch);
+                }
+            }
+            assert_eq!(
+                accepted,
+                if line.contains('"') {
+                    "git switch \"feature/中文\""
+                } else {
+                    "git switch feature/中文"
+                }
+            );
+        }
+    }
+}
+
+#[gpui::test]
+fn git_completion_rejects_previous_directory_and_remote_context(cx: &mut TestAppContext) {
+    let repository = crate::git_completion::tests::repository();
+    let other = tempfile::tempdir().unwrap();
+    let (view, window, _) = open_at(cx, Some(repository.path().to_owned()));
+    view.update(window, |view, cx| {
+        view.exec_context = Some(crate::runtime_exec::PaneExecContext::from_pty_options(
+            &nebula_terminal::tty::Options {
+                working_directory: Some(repository.path().to_owned()),
+                ..Default::default()
+            },
+        ));
+        view.suggest.suggest_env = crate::display::SuggestEnv::Local;
+        view.ghost_enabled = true;
+        view.completion_style = crate::display::CompletionStyle::Inline;
+        feed(view, "❯ git switch fe".as_bytes());
+        refresh_completion_from_grid(view, cx);
+        let cancellation = view.suggestion_task.as_ref().unwrap().cancellation();
+        view.suggest.cwd = other.path().to_string_lossy().into_owned();
+        refresh_completion_from_grid(view, cx);
+        assert!(cancellation.is_cancelled());
+    });
+    window.run_until_parked();
+    view.update(window, |view, cx| {
+        assert!(view.suggest.suggestion.is_empty());
+        assert!(view.suggest.completion_items.is_empty());
+        view.suggest.cwd = repository.path().to_string_lossy().into_owned();
+        view.suggest.suggest_env =
+            crate::display::SuggestEnv::Ssh { destination: "completion-test.invalid".into() };
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    view.update(window, |view, _| {
+        assert!(view.suggest.suggestion.is_empty(), "host branches cannot leak into SSH");
+        assert!(view.suggest.suggestion_edit.is_none());
+    });
+}
+
+#[gpui::test]
 fn issue_353_initial_directory_reaches_completion_and_tab_writes_the_suffix(
     cx: &mut TestAppContext,
 ) {

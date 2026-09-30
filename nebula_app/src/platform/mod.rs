@@ -33,7 +33,7 @@ pub(crate) mod local_paths;
 pub mod notifications;
 pub(crate) mod pi_session;
 pub(crate) mod process;
-mod process_output;
+pub(crate) mod process_output;
 pub(crate) mod process_snapshot;
 #[cfg(all(windows, feature = "gpui-shell"))]
 pub(crate) mod quick_window;
