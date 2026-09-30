@@ -353,10 +353,10 @@ impl SettingsPane {
             |this: &mut Self,
              _,
              event: &SelectEvent<Vec<SharedString>>,
-             _,
+             window,
              cx: &mut Context<Self>| {
                 if matches!(event, SelectEvent::Confirm(Some(_))) {
-                    this.commit_proxy_address(cx);
+                    this.commit_proxy_address(window, cx);
                 }
             },
         ));
@@ -369,8 +369,8 @@ impl SettingsPane {
         subscriptions.push(cx.subscribe_in(
             &proxy_url_input,
             window,
-            |this: &mut Self, _, event: &InputEvent, _, cx: &mut Context<Self>| {
-                this.on_proxy_address_event(event, cx);
+            |this: &mut Self, _, event: &InputEvent, window, cx: &mut Context<Self>| {
+                this.on_proxy_address_event(event, window, cx);
             },
         ));
         let provider_store = crate::ai_providers::load();

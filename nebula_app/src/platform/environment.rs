@@ -8,6 +8,13 @@ pub(crate) fn prepare_local_pty(options: &mut nebula_terminal::tty::Options) {
             options,
             nebula_settings::RuntimeSettings::load().refresh_environment,
         );
+        // Both Windows shells use this adapter after environment refresh. New
+        // panes get the selected protocol; existing processes remain unchanged.
+        if crate::ssh_proxy::apply_saved_terminal_proxy_env(&mut options.env) {
+            let inherited =
+                if options.env_is_complete { None } else { std::env::var("WSLENV").ok() };
+            crate::ssh_proxy::forward_terminal_proxy_to_wsl(&mut options.env, inherited.as_deref());
+        }
     }
     #[cfg(not(windows))]
     let _ = options;

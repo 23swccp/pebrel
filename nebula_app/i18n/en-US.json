@@ -73,6 +73,10 @@
       "address": {
         "label": "Proxy address"
       },
+      "terminal": {
+        "label": "System proxy",
+        "description": "When enabled, new terminals use the current Windows system proxy. A custom proxy address is applied to new terminals on its own, without this switch."
+      },
       "status": {
         "idle": "Test whether the current settings can access the network",
         "running": "Testing network access with the current settings...",

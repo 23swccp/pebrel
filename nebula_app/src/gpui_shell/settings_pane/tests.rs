@@ -56,6 +56,59 @@ fn environment_refresh_switch_is_searchable_and_persists(cx: &mut gpui::TestAppC
 
 #[cfg(feature = "gpui-test-support")]
 #[gpui::test]
+fn pasted_proxy_scheme_updates_the_visible_protocol_and_saved_url(cx: &mut gpui::TestAppContext) {
+    use crate::display::{MANUAL_PROXY_PROTOCOL_OPTIONS, ManualProxyProtocol};
+    use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
+    use gpui::Focusable as _;
+
+    let _lock = lock_theme_studio();
+    let _settings = SettingsBytesGuard::capture();
+    nebula_settings::persist_keys(&[
+        ("ssh_proxy_mode", "custom".into()),
+        ("ssh_proxy_url", "socks5://127.0.0.1:1080".into()),
+    ])
+    .unwrap();
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.set_global(crate::gpui_shell::config::Settings::load(nebula_settings::ThemeName::Nord));
+    });
+    let mut pane_out = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let pane = cx.new(|cx| SettingsPane::new(window, cx));
+        pane.update(cx, |pane, _| pane.active_section = 5);
+        pane_out = Some(pane.clone());
+        gpui_component::Root::new(pane, window, cx)
+    });
+    let pane = pane_out.unwrap();
+    cx.simulate_resize(gpui::size(gpui::px(1200.0), gpui::px(900.0)));
+    for (text, expected, host) in [
+        ("http://127.0.0.1:8080", ManualProxyProtocol::Http, "127.0.0.1:8080"),
+        ("socks5://127.0.0.1:1080", ManualProxyProtocol::Socks5, "127.0.0.1:1080"),
+    ] {
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            pane.read(cx).proxy_url_input.read(cx).focus_handle(cx).focus(window, cx);
+        });
+        let select_all = if crate::platform::Platform::current() == crate::platform::Platform::MacOS
+        {
+            "cmd-a"
+        } else {
+            "ctrl-a"
+        };
+        cx.simulate_keystrokes(select_all);
+        cx.simulate_input(text);
+        cx.run_until_parked();
+        pane.read_with(cx, |pane, cx| {
+            let row = pane.proxy_protocol_select.read(cx).selected_index(cx).unwrap().row;
+            assert_eq!(MANUAL_PROXY_PROTOCOL_OPTIONS[row], expected);
+            assert_eq!(pane.proxy_url_input.read(cx).value().to_string(), host);
+        });
+        assert_eq!(nebula_settings::RuntimeSettings::load().ssh_proxy_url, text);
+    }
+}
+
+#[cfg(feature = "gpui-test-support")]
+#[gpui::test]
 fn provider_key_dialog_blocks_clipboard_export_and_cancel_does_not_store(
     cx: &mut gpui::TestAppContext,
 ) {
