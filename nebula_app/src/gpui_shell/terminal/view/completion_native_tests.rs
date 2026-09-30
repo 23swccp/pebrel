@@ -173,15 +173,18 @@ fn git_completion_native_shell_end_to_end() {
     )
     .unwrap();
     let ssh_config = repository.path().join("qa-ssh-included.conf");
-    std::fs::write(&ssh_config, "Host native-inline native-popup native-hybrid native-right\n  HostName completion.example.invalid\n").unwrap();
+    std::fs::write(&ssh_config, "Host native-inline native-popup native-hybrid native-right production-eu production-us\n  HostName completion.example.invalid\n").unwrap();
     crate::platform::shell::completion_qa_ssh_config_permissions(&ssh_config);
     std::fs::write(
         repository.path().join("qa-ssh.conf"),
         format!("Include \"{}\"\n", ssh_config.to_string_lossy().replace('\\', "/")),
     )
     .unwrap();
+    std::fs::copy(repository.path().join("qa-ssh.conf"), repository.path().join("ssh.conf"))
+        .unwrap();
     std::fs::write(repository.path().join("qa common source.txt"), "executed").unwrap();
-    std::fs::write(repository.path().join("release notes.txt"), "executed").unwrap();
+    std::fs::write(repository.path().join("release notes.txt"), "Release checklist ready.\n")
+        .unwrap();
     std::fs::write(repository.path().join("release plan.md"), "executed").unwrap();
     for mode in ["inline", "popup", "hybrid"] {
         std::fs::write(repository.path().join(format!("qa move {mode}.txt")), "executed").unwrap();
@@ -297,17 +300,16 @@ fn git_completion_native_shell_end_to_end() {
                     cases.push((crate::display::CompletionStyle::Popup, prefix.as_str(), expected.as_str(), " --exec /bin/printf executed > .qa-wsl", None, Some(".qa-wsl"), false));
                 }
                 if demo.as_deref() == Some("smart") {
+                    let ssh_preview = if powershell { " | Select-String '^hostname '" } else { " | grep '^hostname '" };
                     cases = vec![
                         (crate::display::CompletionStyle::Popup, "git switch feature/se", "git switch feature/search-panel", "", Some("feature/search-panel"), None, false),
                         (crate::display::CompletionStyle::Inline, "npm run build:d", "npm run build:desktop", "", None, Some(".qa-desktop"), false),
-                        (crate::display::CompletionStyle::Hybrid, "cp \"release no", "cp \"release notes.txt\"", " notes-copy.txt", None, Some("notes-copy.txt"), true),
+                        (crate::display::CompletionStyle::Hybrid, "ssh -G -F ssh.conf dev@pro", "ssh -G -F ssh.conf dev@production-eu", ssh_preview, None, None, true),
                     ];
-                } else if demo.as_deref() == Some("connections") {
-                    cases.retain(|(_, prefix, _, _, _, _, _)| prefix.contains("me@native-ri") || prefix.starts_with("wsl "));
-                } else if demo.as_deref() == Some("paths") {
-                    cases.retain(|(mode, prefix, _, _, _, _, _)| {
-                        *mode == crate::display::CompletionStyle::Popup && (prefix.starts_with("cp ") || prefix.starts_with("cat ") || prefix.starts_with("mv "))
-                    });
+                    if let Some((prefix, expected)) = &wsl_case {
+                        cases.push((crate::display::CompletionStyle::Popup, prefix, expected, " --exec /bin/cat /etc/os-release", None, None, false));
+                    }
+                    cases.push((crate::display::CompletionStyle::Hybrid, "cat \"release no", "cat \"release notes.txt\"", "", None, None, true));
                 } else if demo.as_deref() == Some("history") {
                     wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
                         let term = session.term.lock();
@@ -396,6 +398,17 @@ fn git_completion_native_shell_end_to_end() {
                     }
                     if let Some(marker) = marker {
                         wait_for(cx, window.into(), &terminal, |_| marker_complete(marker)).await.map_err(|error| format!("{error}; marker {marker}: {:?}", std::fs::read(repository.path().join(marker)).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())))?;
+                    }
+                    if demo.as_deref() == Some("smart") {
+                        let visible_output = if prefix.starts_with("ssh ") { Some("hostname completion.example.invalid") }
+                            else if prefix.starts_with("wsl ") { Some("NAME=") }
+                            else if prefix.starts_with("cat ") { Some("Release checklist ready.") } else { None };
+                        if let Some(expected) = visible_output {
+                            // 演示直接检查真实终端输出，不把测试标记文件命令录进画面。
+                            wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
+                                session.term.lock().grid().display_iter().map(|cell| cell.cell.c).collect::<String>().contains(expected)
+                            })).await?;
+                        }
                     }
                     if let Some(branch) = branch.filter(|name| name.starts_with("auto/") || name.starts_with("custom/")) {
                         let cwd = repository.path().to_owned();
