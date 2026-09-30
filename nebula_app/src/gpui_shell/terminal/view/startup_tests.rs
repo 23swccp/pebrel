@@ -116,7 +116,7 @@ fn git_completion_real_repository_reaches_all_modes_and_preserves_quoted_edits(
                     !view.suggest.suggestion.is_empty() || !view.suggest.completion_items.is_empty(),
                     "missing Git candidate before acceptance: mode={mode:?} input={line:?} captured={:?} env={:?} cwd={:?} cache={:?}",
                     view.suggest.screen_line, view.suggest.suggest_env, view.suggest.cwd,
-                    view.git_completion_cache,
+                    view.completion_session,
                 );
             });
             if mode == CompletionStyle::Hybrid {

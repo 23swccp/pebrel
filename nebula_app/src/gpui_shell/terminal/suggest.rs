@@ -1,53 +1,9 @@
-//! 补全引擎的 GPUI 接线：进程级共享数据源。
-//!
-//! 计算核心在 `display::suggest_engine`（两壳同源）；这里只解决"GPUI 壳没有
-//! `Display` 可借"的所有权问题：历史/目录/PATH 三个数据源在进程内各持一份
-//! 单例，所有 `TerminalView` 共用——多 pane 各自 load 会在退出时互相覆盖
-//! 历史文件，单例还顺带免掉每次 spawn 的重复读盘。
-//!
-//! 历史只在匹配期间加锁；目录查询不得持有历史锁，避免后台扫描阻塞前台提交。
+//! GPUI 补齐适配：拥有任务生命周期，连接终端提交与列表交互。
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-use std::sync::{Mutex, MutexGuard, OnceLock};
-
-use crate::directory_history::DirectoryHistory;
-use crate::display::suggest_engine::{HistorySource, SuggestSources, suggest_update_with_cancel};
-use crate::display::{CompletionStyle, NebulaPaneState};
-use crate::nebula_history::NebulaHistory;
-
-/// 历史是唯一需要独占可变借用的源（`record` 追加 + 落盘）。目录/PATH
-/// 内部自带共享语义（`DirectoryHistory` 克隆句柄、commands 是 `Arc<Mutex>`）。
-struct Shared {
-    history: Mutex<NebulaHistory>,
-    directories: DirectoryHistory,
-    commands: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-}
-
-static SHARED: OnceLock<Shared> = OnceLock::new();
-
-fn shared() -> &'static Shared {
-    SHARED.get_or_init(|| Shared {
-        history: Mutex::new(NebulaHistory::load()),
-        directories: crate::directory_history::global(),
-        commands: crate::display::nebula_commands_handle(),
-    })
-}
-
-fn history() -> MutexGuard<'static, NebulaHistory> {
-    shared().history.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-#[derive(Clone, Default)]
-pub(super) struct Cancellation(Arc<AtomicBool>);
-
-impl Cancellation {
-    pub(super) fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Relaxed)
-    }
-}
+#[cfg(test)]
+pub(super) use crate::completion::history_hint_for_test;
+pub(super) use crate::completion::{Cancellation, record_directory};
+use crate::display::NebulaPaneState;
 
 /// 视图释放任务时同时通知已开始的同步计算，不能仅丢弃最后的 UI 回填。
 pub(super) struct Pending {
@@ -68,114 +24,7 @@ impl Pending {
 
 impl Drop for Pending {
     fn drop(&mut self) {
-        self.cancellation.0.store(true, Ordering::Relaxed);
-    }
-}
-
-#[cfg(test)]
-pub(super) fn history_hint_for_test(
-    scope: &crate::nebula_history::HistoryScope,
-    prefix: &str,
-) -> Option<String> {
-    history().hint(scope, prefix).map(str::to_owned)
-}
-
-/// 重算一个 pane 的 ghost/弹窗建议。`line_override` 是 grid 读出的屏幕真值
-/// （Windows 唯一行来源，见旧壳 `nebula_input_from_raw_grid` 的契约）。
-pub fn update(
-    state: &mut NebulaPaneState,
-    line_override: Option<String>,
-    enabled: bool,
-    style: CompletionStyle,
-) {
-    update_with_cancel(state, line_override, enabled, style, &|| false);
-}
-
-fn update_with_cancel(
-    state: &mut NebulaPaneState,
-    line_override: Option<String>,
-    enabled: bool,
-    style: CompletionStyle,
-    cancelled: &dyn Fn() -> bool,
-) {
-    let sources = shared();
-    suggest_update_with_cancel(
-        &SuggestSources {
-            history: HistorySource::Shared(&sources.history),
-            directories: &sources.directories,
-            commands: &sources.commands,
-            enabled,
-            style,
-        },
-        state,
-        line_override,
-        cancelled,
-    );
-}
-
-pub(super) fn cache_key(state: &NebulaPaneState, line: &str, style: CompletionStyle) -> String {
-    let commands = crate::display::nebula_commands_handle();
-    let generation = commands.lock().map(|commands| commands.len()).unwrap_or(0);
-    crate::display::suggest_engine::suggestion_key(state, line, style, generation)
-}
-
-pub(super) struct Suggestion {
-    pub ghost: String,
-    pub ghost_edit: Option<crate::display::NebulaCompletionItem>,
-    pub items: Vec<crate::display::NebulaCompletionItem>,
-    pub pending_remote_dir: Option<String>,
-}
-
-/// 只把请求所需的数据送到后台，终端网格与视图仍由前台独占。
-pub(super) struct GitRequest {
-    pub cache: Arc<crate::git_completion::Cache>,
-    pub execution: crate::runtime_exec::PaneExecContext,
-}
-
-pub(super) fn calculate(
-    cwd: String,
-    env: crate::display::SuggestEnv,
-    line: String,
-    style: CompletionStyle,
-    cancellation: Cancellation,
-    git: Option<GitRequest>,
-) -> Suggestion {
-    let mut state = NebulaPaneState::default();
-    state.cwd = cwd;
-    state.suggest_env = env;
-    if !cancellation.is_cancelled() {
-        let semantic = git.filter(|_| state.suggest_env.is_this_machine()).and_then(|git| {
-            use nebula_completions::command_context::ShellSyntax;
-            let syntax = match git.execution.shell_program() {
-                Some(program) => ShellSyntax::for_program(program),
-                None => ShellSyntax::for_program(&crate::platform::shell::default_shell_id()),
-            };
-            crate::git_completion::complete(
-                &git.cache,
-                &git.execution,
-                &state.cwd,
-                &line,
-                syntax,
-                &|| cancellation.is_cancelled(),
-            )
-        });
-        if !cancellation.is_cancelled() {
-            if let Some(candidates) = semantic {
-                crate::display::suggest_engine::apply_semantic_candidates(
-                    &mut state, &line, style, candidates,
-                );
-            } else {
-                update_with_cancel(&mut state, Some(line), true, style, &|| {
-                    cancellation.is_cancelled()
-                });
-            }
-        }
-    }
-    Suggestion {
-        ghost: state.suggestion,
-        ghost_edit: state.suggestion_edit,
-        items: state.completion_items,
-        pending_remote_dir: state.pending_remote_dir,
+        self.cancellation.cancel();
     }
 }
 
@@ -185,7 +34,8 @@ pub fn commit_line(state: &mut NebulaPaneState) {
     let line = state.screen_line.trim().to_owned();
     let committed = if line.is_empty() { state.line_buf.trim().to_owned() } else { line.clone() };
     if !line.is_empty() {
-        state.record_completion_command(&mut history(), &line);
+        crate::completion::record_command(&state.suggest_env.history_scope(), &line, &state.cwd);
+        state.completion_submitted(&line);
     } else {
         state.completion_submitted(&state.line_buf.clone());
     }
@@ -194,13 +44,6 @@ pub fn commit_line(state: &mut NebulaPaneState) {
     // grid 读失败时退回按键镜像——取首 token 做身份已足够。
     state.last_committed = committed;
     crate::display::nebula_clear_line(state);
-}
-
-/// shell 集成上报 cwd 时喂目录 frecency（旧壳 `nebula_record_directory`）。
-pub fn record_directory(cwd: &str) {
-    if !cwd.is_empty() {
-        shared().directories.record(cwd);
-    }
 }
 
 /// 弹窗列表是否正显示。
