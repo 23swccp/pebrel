@@ -201,11 +201,25 @@ class PosixLifecycleTests(unittest.TestCase):
         self.context.start()
         self.capture_descendants()
         process = self.context.process
-        with patch("conformance.harness.os.killpg", side_effect=OSError("cleanup unavailable")):
-            with self.assertRaisesRegex(OSError, "cleanup unavailable"):
-                self.context.stop(force=True)
+        for error in (OSError("cleanup unavailable"), PermissionError("cleanup unavailable")):
+            with self.subTest(error=type(error).__name__), patch(
+                "conformance.harness.os.killpg", side_effect=error,
+            ):
+                with self.assertRaisesRegex(OSError, "cleanup unavailable"):
+                    self.context.stop(force=True)
         self.assertIs(self.context.process, process)
         self.context.stop(force=True)
+        self.assert_tree_exited(process)
+
+    def test_zombie_only_group_permission_error_still_reaps_the_leader(self) -> None:
+        self.fixture.write_text("import time; time.sleep(60)\n", encoding="utf-8")
+        self.context.start()
+        process = self.context.process
+        os.kill(process.pid, signal.SIGKILL)
+        self.context._wait_process(timeout=5)
+        with patch("conformance.harness.os.killpg", side_effect=PermissionError("zombie-only group")):
+            self.context.stop(force=True)
+        self.assertEqual(process.returncode, -signal.SIGKILL)
         self.assert_tree_exited(process)
 
     def test_force_stop_drains_descendants_missed_by_first_group_signal(self) -> None:

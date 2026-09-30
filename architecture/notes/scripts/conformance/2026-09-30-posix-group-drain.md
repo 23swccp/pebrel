@@ -41,6 +41,11 @@ Keep the process on timeout or inspection failure so cleanup can be retried.
 Fail explicitly if some caller already reaped the leader: repeatedly signalling
 a possibly reused numeric PGID is not an acceptable fallback.
 
+Darwin's `killpg1` also returns EPERM when all remaining members are zombies
+(its filter excludes zombies and leaves `nfound` zero). Accept that error only
+after process inspection proves there are no live members. A permission error
+with a live member still propagates and preserves ownership.
+
 ## Rejected alternatives
 
 - Retry CI or increase the pipe assertion's timeout: the captured grandchild

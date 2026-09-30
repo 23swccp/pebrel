@@ -55,6 +55,10 @@ def stop_group(process: subprocess.Popen, *, force: bool, timeout: float) -> Non
             os.killpg(process.pid, signum)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            # Darwin 对只剩僵尸的组也返回 EPERM；须确认没有活进程，不能吞掉真实权限错误。
+            if _live_group_members(process.pid, max(0, deadline - time.monotonic())):
+                raise
 
     send(signal.SIGKILL if force else signal.SIGTERM)
     while True:
@@ -66,6 +70,6 @@ def stop_group(process: subprocess.Popen, *, force: bool, timeout: float) -> Non
         if code is not None and not _live_group_members(process.pid, remaining):
             process.wait(timeout=max(0, deadline - time.monotonic()))
             return
-        if force or code is not None or time.monotonic() >= graceful_deadline:
+        if code is not None or time.monotonic() >= graceful_deadline:
             send(signal.SIGKILL)
         time.sleep(min(0.02, max(0, deadline - time.monotonic())))
