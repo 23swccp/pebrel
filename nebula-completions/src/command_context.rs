@@ -94,15 +94,22 @@ impl CommandContext {
             return None;
         }
         let quote = self.target.quote;
-        let safe = value.chars().all(|c| {
-            c.is_alphanumeric()
-                || matches!(c, '/' | '.' | '_' | '-' | ':' | '=')
-                || c == '@'
-                    && self.syntax != ShellSyntax::Literal
-                    && (self.syntax != ShellSyntax::PowerShell || !value.starts_with('@'))
-                || c == ',' && matches!(self.syntax, ShellSyntax::Posix | ShellSyntax::Cmd)
-                || c == '\\' && matches!(self.syntax, ShellSyntax::PowerShell | ShellSyntax::Cmd)
-        });
+        // PowerShell 将 -Fconfig.conf 拆成参数 -Fconfig 和 .conf；整个词需引用。
+        // 普通选项仍保持裸写，否则 cmdlet 会把参数名当成位置参数。
+        let parameter_split = self.syntax == ShellSyntax::PowerShell
+            && value.starts_with('-')
+            && value.contains(['.', ':']);
+        let safe = !parameter_split
+            && value.chars().all(|c| {
+                c.is_alphanumeric()
+                    || matches!(c, '/' | '.' | '_' | '-' | ':' | '=')
+                    || c == '@'
+                        && self.syntax != ShellSyntax::Literal
+                        && (self.syntax != ShellSyntax::PowerShell || !value.starts_with('@'))
+                    || c == ',' && matches!(self.syntax, ShellSyntax::Posix | ShellSyntax::Cmd)
+                    || c == '\\'
+                        && matches!(self.syntax, ShellSyntax::PowerShell | ShellSyntax::Cmd)
+            });
         let cmd_quoted_safe = self.syntax == ShellSyntax::Cmd
             && value.chars().all(|c| {
                 c.is_alphanumeric()

@@ -37,12 +37,33 @@ fn ssh_completion_preserves_login_jump_and_option_values() {
         let line = "ssh -viidentity";
         let c = Context::parse(line, line.len(), syntax).unwrap();
         assert_eq!(c.source, Source::Paths { directories_only: false });
-        assert_eq!(c.candidate("identity.pem").unwrap().value, "-viidentity.pem");
+        let expected =
+            if syntax == ShellSyntax::PowerShell { "'-viidentity.pem'" } else { "-viidentity.pem" };
+        assert_eq!(c.candidate("identity.pem").unwrap().value, expected);
     }
     assert!(context("ssh -F ~/.ssh/config pro").ssh_config_expands_home);
     assert!(!context("ssh -F '~/.ssh/config' pro").ssh_config_expands_home);
     assert_eq!(context("ssh -F=literal pro").ssh_config.as_deref(), Some("=literal"));
     assert_eq!(context("ssh -F first -F second pro").ssh_config.as_deref(), Some("second"));
+}
+
+#[test]
+fn powershell_attached_paths_are_single_native_arguments() {
+    for (line, path, expected) in [
+        ("ssh -Fqa-ssh.c", "qa-ssh.conf", "'-Fqa-ssh.conf'"),
+        ("ssh -iC:/ke", "C:/keys/id", "'-iC:/keys/id'"),
+        ("ssh -viid", "identity.pem", "'-viidentity.pem'"),
+        ("ssh -Fconf", "config", "-Fconfig"),
+    ] {
+        let c = Context::parse(line, line.len(), ShellSyntax::PowerShell).unwrap();
+        assert_eq!(c.candidate(path).unwrap().value, expected);
+    }
+    for (line, expected) in
+        [("git switch --qui", "--quiet"), ("Get-Content -LiteralP", "-LiteralPath")]
+    {
+        let c = Context::parse(line, line.len(), ShellSyntax::PowerShell).unwrap();
+        assert_eq!(c.static_candidates()[0].value, expected);
+    }
 }
 
 #[test]

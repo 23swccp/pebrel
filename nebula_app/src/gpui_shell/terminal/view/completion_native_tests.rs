@@ -183,6 +183,8 @@ fn git_completion_native_shell_end_to_end() {
         std::fs::write(repository.path().join(format!("qa move {mode}.txt")), "executed").unwrap();
     }
     let shell = crate::platform::shell::completion_qa_shell(&output);
+    let powershell = nebula_completions::command_context::ShellSyntax::for_program(shell.program())
+        == nebula_completions::command_context::ShellSyntax::PowerShell;
     let result = Arc::new(Mutex::new(None));
     let after = result.clone();
     gpui_platform::application().with_assets(crate::gpui_shell::assets::NebulaAssets).run(move |cx| {
@@ -233,6 +235,8 @@ fn git_completion_native_shell_end_to_end() {
                     let prefix: String = name.chars().take(2).collect();
                     (format!("wsl -d \"{prefix}"), format!("wsl -d \"{name}\""))
                 });
+                let config_expected = if powershell { "ssh -G '-Fqa-ssh.conf'" } else { "ssh -G -Fqa-ssh.conf" };
+                let jump_expected = if powershell { "ssh -G -F qa-ssh.conf '-Jnative-inline,me@native-popup'" } else { "ssh -G -F qa-ssh.conf -Jnative-inline,me@native-popup" };
                 // Every case starts from a real prompt, types through EntityInputHandler,
                 // paints candidates, accepts through the keyboard handler, then executes.
                 let mut cases = vec![
@@ -276,8 +280,8 @@ fn git_completion_native_shell_end_to_end() {
                     (crate::display::CompletionStyle::Inline, "mv \"qa move in", "mv \"qa move inline.txt\"", " qa-moved-inline", None, Some("qa-moved-inline"), false),
                     (crate::display::CompletionStyle::Popup, "mv \"qa move po", "mv \"qa move popup.txt\"", " qa-moved-popup", None, Some("qa-moved-popup"), false),
                     (crate::display::CompletionStyle::Hybrid, "mv \"qa move hy", "mv \"qa move hybrid.txt\"", " qa-moved-hybrid", None, Some("qa-moved-hybrid"), true),
-                    (crate::display::CompletionStyle::Popup, "ssh -G -Fqa-ssh.c", "ssh -G -Fqa-ssh.conf", " native-popup > .qa-ssh-config", None, Some(".qa-ssh-config"), false),
-                    (crate::display::CompletionStyle::Hybrid, "ssh -G -F qa-ssh.conf -Jnative-inline,me@native-po", "ssh -G -F qa-ssh.conf -Jnative-inline,me@native-popup", " native-right > .qa-ssh-jump", None, Some(".qa-ssh-jump"), true),
+                    (crate::display::CompletionStyle::Popup, "ssh -G -Fqa-ssh.c", config_expected, " native-popup > .qa-ssh-config", None, Some(".qa-ssh-config"), false),
+                    (crate::display::CompletionStyle::Hybrid, "ssh -G -F qa-ssh.conf -Jnative-inline,me@native-po", jump_expected, " native-right > .qa-ssh-jump", None, Some(".qa-ssh-jump"), true),
                 ];
                 if let Some((prefix, expected)) = &wsl_case {
                     cases.push((crate::display::CompletionStyle::Popup, prefix.as_str(), expected.as_str(), " --exec /bin/printf executed > .qa-wsl", None, Some(".qa-wsl"), false));
