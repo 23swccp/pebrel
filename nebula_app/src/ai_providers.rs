@@ -25,6 +25,7 @@ pub enum ProviderKind {
     Google,
     Ollama,
     OpenRouter,
+    Requesty,
     Qwen,
     DeepSeek,
     Kimi,
@@ -36,12 +37,13 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
-    pub const PRESETS: [Self; 13] = [
+    pub const PRESETS: [Self; 14] = [
         Self::OpenAi,
         Self::Anthropic,
         Self::Google,
         Self::Ollama,
         Self::OpenRouter,
+        Self::Requesty,
         Self::Qwen,
         Self::DeepSeek,
         Self::Kimi,
@@ -59,6 +61,7 @@ impl ProviderKind {
             Self::Google => "Google",
             Self::Ollama => "Ollama",
             Self::OpenRouter => "OpenRouter",
+            Self::Requesty => "Requesty",
             Self::Qwen => "Qwen",
             Self::DeepSeek => "DeepSeek",
             Self::Kimi => "Kimi",
@@ -77,6 +80,7 @@ impl ProviderKind {
             Self::Google => "https://generativelanguage.googleapis.com/v1beta",
             Self::Ollama => "http://localhost:11434/v1",
             Self::OpenRouter => "https://openrouter.ai/api/v1",
+            Self::Requesty => "https://router.requesty.ai/v1",
             Self::Qwen => "https://dashscope.aliyuncs.com/compatible-mode/v1",
             Self::DeepSeek => "https://api.deepseek.com/v1",
             Self::Kimi => "https://api.moonshot.ai/v1",
@@ -95,6 +99,7 @@ impl ProviderKind {
             Self::Google => "gemini-2.5-flash",
             Self::Ollama => "qwen3",
             Self::OpenRouter => "openai/gpt-5.4-mini",
+            Self::Requesty => "openai/gpt-5.4-mini",
             Self::Qwen => "qwen3.7-plus",
             Self::DeepSeek => "deepseek-chat",
             Self::Kimi => "kimi-k2.6",
@@ -545,6 +550,8 @@ mod tests {
     fn provider_test_urls_follow_each_protocol() {
         let openai = AiProvider::preset(ProviderKind::OpenAi, "openai");
         assert_eq!(test_url(&openai).unwrap(), "https://api.openai.com/v1/models");
+        let requesty = AiProvider::preset(ProviderKind::Requesty, "requesty");
+        assert_eq!(test_url(&requesty).unwrap(), "https://router.requesty.ai/v1/models");
         let azure = AiProvider::preset(ProviderKind::AzureOpenAi, "azure");
         assert!(test_url(&azure).unwrap().contains("/openai/models?api-version="));
     }
