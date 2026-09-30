@@ -381,7 +381,10 @@ impl SettingsPane {
             cx.notify();
             return;
         }
-        if matches!(key, "ai_toasts" | "focus_follows_mouse" | "dim_inactive_panes") {
+        if matches!(
+            key,
+            "ai_toasts" | "focus_follows_mouse" | "dim_inactive_panes" | "refresh_environment"
+        ) {
             if let Err(error) = self.try_persist(&[(key, (value as u8).to_string())], cx) {
                 let language = crate::gpui_shell::config::ui_language(cx);
                 super::toast::toast(
@@ -743,6 +746,7 @@ impl SettingsPane {
             "multiline_paste_confirm" => flag!(multiline_paste_confirm),
             "tab_close_visible" => flag!(tab_close_visible),
             "terminal_proxy" => flag!(terminal_proxy),
+            "refresh_environment" => flag!(refresh_environment),
             "powerline" => flag!(powerline),
             "ghost" => flag!(ghost),
             "ai_toasts" => flag!(ai_toasts),
@@ -1094,7 +1098,19 @@ impl SettingsPane {
         let terminal = self
             .group(language.pick("启动", "Startup"), cx)
             .child(self.shell_select_row(cx))
-            .child(self.startup_directory_row(cx));
+            .child(self.startup_directory_row(cx))
+            .when(
+                crate::platform::Platform::current() == crate::platform::Platform::Windows,
+                |group| {
+                    group.child(self.switch_row(
+                        "refresh_environment",
+                        language.text(crate::i18n::Message::SettingsEnvironmentRefresh),
+                        language.text(crate::i18n::Message::SettingsEnvironmentRefreshDescription),
+                        self.runtime.refresh_environment,
+                        cx,
+                    ))
+                },
+            );
         let alerts = self
             .group(language.pick("提醒", "Alerts"), cx)
             .child(self.switch_row(

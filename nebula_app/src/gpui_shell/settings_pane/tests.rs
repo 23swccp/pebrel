@@ -2,6 +2,60 @@ use super::*;
 
 #[cfg(feature = "gpui-test-support")]
 #[gpui::test]
+fn environment_refresh_switch_is_searchable_and_persists(cx: &mut gpui::TestAppContext) {
+    use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
+
+    let _fixture_guard = lock_theme_studio();
+    let _guard = SettingsBytesGuard::capture();
+    nebula_settings::persist_keys(&[("refresh_environment", "1".into())]).unwrap();
+    cx.update(|cx| {
+        gpui_component::init(cx);
+        cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
+    });
+    let mut pane_out = None;
+    let (_, cx) = cx.add_window_view(|window, cx| {
+        let view = cx.new(|cx| SettingsPane::new(window, cx));
+        pane_out = Some(view.clone());
+        gpui_component::Root::new(view, window, cx)
+    });
+    let pane = pane_out.unwrap();
+    cx.simulate_resize(gpui::size(px(1280.0), px(900.0)));
+    cx.update(|window, cx| {
+        pane.update(cx, |pane, cx| {
+            pane.settings_search_input
+                .update(cx, |input, cx| input.replace_all("环境变量", window, cx));
+        });
+    });
+    cx.run_until_parked();
+    assert_eq!(pane.read_with(cx, |pane, _| pane.active_section), 2);
+    if crate::platform::Platform::current() != crate::platform::Platform::Windows {
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        assert!(cx.debug_bounds("nebula-switch-refresh_environment").is_none());
+        assert!(RuntimeSettings::load().refresh_environment);
+        return;
+    }
+    for enabled in [false, true] {
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let bounds = cx.debug_bounds("nebula-switch-refresh_environment").unwrap();
+        assert!(bounds.size.width > px(0.0) && bounds.size.height > px(0.0));
+        assert!(bounds.origin.y >= px(0.0) && bounds.bottom() <= px(900.0));
+        cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+        cx.run_until_parked();
+        assert_eq!(pane.read_with(cx, |pane, _| pane.runtime.refresh_environment), enabled);
+        assert_eq!(RuntimeSettings::load().refresh_environment, enabled);
+        assert_eq!(
+            pane.read_with(cx, |pane, _| pane.setting_override("refresh_environment")),
+            Some((!enabled, "1".into()))
+        );
+    }
+}
+
+#[cfg(feature = "gpui-test-support")]
+#[gpui::test]
 fn provider_key_dialog_blocks_clipboard_export_and_cancel_does_not_store(
     cx: &mut gpui::TestAppContext,
 ) {
