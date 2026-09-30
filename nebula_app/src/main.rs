@@ -243,7 +243,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         if try_hand_over_to_resident(&options) {
             return Ok(());
         }
-        gpui_shell::run_shell(initial_cwd, terminal_options.command(), shell_id);
+        gpui_shell::run_shell(
+            initial_cwd,
+            terminal_options.command(),
+            shell_id,
+            options.config_file.clone(),
+        );
         return Ok(());
     }
 
