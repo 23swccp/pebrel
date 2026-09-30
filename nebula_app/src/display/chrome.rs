@@ -774,6 +774,7 @@ fn spinner_dot_center(
 /// (egui-free) chrome pipeline. Text labels and interactivity follow.
 pub(super) fn draw_chrome(d: &mut Display) {
     d.step_chrome_anims();
+    let motion_frame = d.ui_animations.frame();
     let any_tab_running = d.any_tab_running();
     let spinner_phase = d.ui_animations.advance_spinner(any_tab_running);
 
