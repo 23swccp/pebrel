@@ -257,6 +257,57 @@ pub struct AiSessionIdentity {
 }
 
 impl NebulaPaneState {
+    pub(crate) fn request_completion_popup(&mut self) -> bool {
+        if self.completion_popup_requested {
+            return true;
+        }
+        if self.screen_line.is_empty() && self.line_buf.is_empty() {
+            return false;
+        }
+        self.completion_popup_requested = true;
+        self.completion_suppressed_line = None;
+        self.clear_completion_hints();
+        true
+    }
+
+    pub(crate) fn completion_popup_move(&mut self, delta: isize) {
+        let len = self.completion_items.len();
+        if len == 0 {
+            return;
+        }
+        self.completion_selected = Some(match self.completion_selected {
+            Some(current) => (current as isize + delta).rem_euclid(len as isize) as usize,
+            None => 0,
+        });
+    }
+
+    pub(crate) fn completion_popup_take(&mut self) -> Option<NebulaCompletionItem> {
+        let item = self.completion_items.get(self.completion_selected?)?.clone();
+        self.completion_items.clear();
+        self.completion_selected = None;
+        self.completion_popup_requested = false;
+        Some(item)
+    }
+
+    pub(crate) fn completion_popup_dismiss(&mut self) -> bool {
+        if self.completion_popup_requested {
+            // 手动列表取消后恢复灰字；清缓存同时作废尚未返回的候选。
+            self.completion_popup_requested = false;
+            self.clear_completion_hints();
+            return true;
+        }
+        if self.completion_items.is_empty() {
+            return false;
+        }
+        let line = if self.screen_line.is_empty() { &self.line_buf } else { &self.screen_line };
+        if !line.is_empty() {
+            self.completion_suppressed_line = Some(line.clone());
+        }
+        self.completion_items.clear();
+        self.completion_selected = None;
+        true
+    }
+
     pub(crate) fn completion_query_matches(&self, key: &str) -> bool {
         self.suggestion_key == key
     }

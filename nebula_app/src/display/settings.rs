@@ -1573,7 +1573,7 @@ fn settings_geometry(
     let startup_directory_y0 = terminal_import_y0 + ROW_H;
     let font_y0 = startup_directory_y0 + ROW_H;
     let ghost_y0 = font_y0 + ROW_H + GROUP_ADVANCE;
-    let open_y0 = ghost_y0 + 3.0 * ROW_H + GROUP_ADVANCE;
+    let open_y0 = ghost_y0 + 2.0 * ROW_H + GROUP_ADVANCE;
     let profiles_h = s(open_y0 + ROW_H + 32.0 - 72.0);
 
     // AI providers intentionally use a denser list + editor flow inspired by
@@ -1836,7 +1836,7 @@ fn settings_geometry(
         powerline: (row_x, at(terminal_appearance_y0 + 3.0 * ROW_H), row_w, row_h),
         ghost: (row_x, at(ghost_y0), row_w, row_h),
         accept: (row_x, at(ghost_y0 + ROW_H), row_w, row_h),
-        completion_style: (row_x, at(ghost_y0 + 2.0 * ROW_H), row_w, row_h),
+        completion_style: (row_x, at(ghost_y0 + ROW_H), row_w, row_h),
         open_config_file: (row_x, at(open_y0), row_w, row_h),
         terminal_import: (row_x, at(terminal_import_y0), row_w, row_h),
         ssh_host_row0,
@@ -2681,9 +2681,6 @@ pub fn settings_hit(
                 }
                 if contains_rect(widgets::toggle_rect(geometry.ghost, scale_factor), x, y) {
                     return SettingsHit::GhostToggle;
-                }
-                if contains_rect(widgets::combobox_rect(geometry.accept, scale_factor), x, y) {
-                    return SettingsHit::AcceptCycle;
                 }
                 if contains_rect(
                     widgets::combobox_rect(geometry.completion_style, scale_factor),
@@ -4087,7 +4084,7 @@ pub(super) fn push_quads(
             group_frame(quads, geometry.shell, 2);
             group_frame(quads, geometry.startup_directory, 1);
             group_frame(quads, geometry.font, 1);
-            group_frame(quads, geometry.ghost, 3);
+            group_frame(quads, geometry.ghost, 2);
             group_frame(quads, geometry.open_config_file, 1);
             for (hit, rect) in [
                 (SettingsHit::ShellCycle, geometry.shell),
@@ -4095,7 +4092,6 @@ pub(super) fn push_quads(
                 (SettingsHit::StartupDirectory, geometry.startup_directory),
                 (SettingsHit::FontCycle, geometry.font),
                 (SettingsHit::GhostToggle, geometry.ghost),
-                (SettingsHit::AcceptCycle, geometry.accept),
                 (SettingsHit::CompletionStyleCycle, geometry.completion_style),
                 (SettingsHit::OpenConfigFile, geometry.open_config_file),
             ] {
@@ -4133,13 +4129,6 @@ pub(super) fn push_quads(
                 geometry.font,
                 view.hover == SettingsHit::FontCycle,
                 view.dropdown == Some(SettingsDropdown::Font),
-            );
-            combobox(
-                quads,
-                &mut staged,
-                geometry.accept,
-                view.hover == SettingsHit::AcceptCycle,
-                view.dropdown == Some(SettingsDropdown::Accept),
             );
             combobox(
                 quads,
@@ -6580,26 +6569,6 @@ pub(super) fn draw_text(
                     sk.ink,
                 );
             }
-            if visible(geometry.accept.1, geometry.accept.3) {
-                row_label(
-                    r,
-                    gc,
-                    size,
-                    scale,
-                    &sk,
-                    geometry.accept,
-                    language.pick("补全接受键", "Completion accept key"),
-                    "",
-                    sk.ink,
-                );
-                combobox_value(
-                    r,
-                    gc,
-                    geometry.accept,
-                    accept_label(view.accept, language),
-                    sk.accent,
-                );
-            }
             if visible(geometry.completion_style.1, geometry.completion_style.3) {
                 row_label(
                     r,
@@ -6608,7 +6577,7 @@ pub(super) fn draw_text(
                     scale,
                     &sk,
                     geometry.completion_style,
-                    language.pick("补全样式", "Completion style"),
+                    language.text(crate::i18n::Message::SettingsCompletionMode),
                     "",
                     sk.ink,
                 );

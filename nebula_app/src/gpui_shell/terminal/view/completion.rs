@@ -10,8 +10,7 @@ impl TerminalView {
         let hybrid = self.completion_style == CompletionStyle::Hybrid;
         if key == "escape" && hybrid && self.suggest.completion_popup_requested {
             self.suggestion_task = None;
-            self.suggest.completion_popup_requested = false;
-            self.suggest.clear_completion_hints();
+            self.suggest.completion_popup_dismiss();
             self.completion_viewport.clear();
             return true;
         }
@@ -48,8 +47,7 @@ impl TerminalView {
             && !self.suggest.screen_line.is_empty()
         {
             // Tab 请求只改变呈现，不向 PTY 写入；原有后台任务与过期检查继续负责候选。
-            self.suggest.completion_popup_requested = true;
-            self.suggest.completion_suppressed_line = None;
+            self.suggest.request_completion_popup();
             self.refresh_suggestion_from_snapshot(
                 Some(self.suggest.screen_line.clone()),
                 self.suggest_anchor,

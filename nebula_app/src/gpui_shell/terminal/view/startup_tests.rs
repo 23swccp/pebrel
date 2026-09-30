@@ -167,9 +167,11 @@ fn completion_mode_hybrid_lists_without_writing_and_cancels_pending_results(
         refresh_completion_from_grid(view, cx);
     });
     window.run_until_parked();
-    view.update(window, |view, cx| {
-        assert_eq!(view.suggest.suggestion, "andidate.txt");
-        assert!(view.handle_completion_key("tab", cx));
+    window.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            assert_eq!(view.suggest.suggestion, "andidate.txt");
+            view.on_terminal_tab(&TerminalTab, window, cx);
+        });
     });
     window.run_until_parked();
     assert!(
@@ -179,6 +181,14 @@ fn completion_mode_hybrid_lists_without_writing_and_cancels_pending_results(
     view.update(window, |view, cx| {
         assert_eq!(view.suggest.completion_items[0].insert, "andidate.txt");
         assert_eq!(view.suggest.completion_selected, Some(0));
+        crate::display::nebula_input_char(&mut view.suggest, 'a');
+        feed(view, b"a");
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    view.update(window, |view, cx| {
+        assert!(view.suggest.completion_popup_requested, "typing keeps the requested list open");
+        assert_eq!(view.suggest.completion_items[0].insert, "ndidate.txt");
         assert!(view.handle_completion_key("enter", cx));
         assert!(!view.suggest.completion_popup_requested);
     });
@@ -190,7 +200,7 @@ fn completion_mode_hybrid_lists_without_writing_and_cancels_pending_results(
         })
         .flatten()
         .collect();
-    assert_eq!(input, b"andidate.txt", "acceptance must not execute a command");
+    assert_eq!(input, b"ndidate.txt", "acceptance must not execute a command");
 }
 
 #[gpui::test]
@@ -226,6 +236,40 @@ fn completion_mode_switch_invalidates_a_pending_list_and_right_accepts_inline(
         .flatten()
         .collect();
     assert_eq!(input, b"tl");
+}
+
+#[gpui::test]
+fn completion_mode_list_tab_accepts_first_candidate_and_ime_keeps_the_key(cx: &mut TestAppContext) {
+    let (view, window, receiver) = open(cx);
+    view.update(window, |view, cx| {
+        view.ghost_enabled = true;
+        view.completion_style = crate::display::CompletionStyle::Popup;
+        feed(view, "❯ systemc".as_bytes());
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    window.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            assert_eq!(view.suggest.completion_selected, None);
+            assert_eq!(view.suggest.completion_items[0].insert, "tl");
+            view.marked_text = Some("输入法".into());
+            view.on_terminal_tab(&TerminalTab, window, cx);
+            assert!(receiver.try_iter().all(|message| !matches!(message, Msg::Input(_))));
+            assert_eq!(view.suggest.completion_selected, None);
+            view.marked_text = None;
+            view.on_terminal_tab(&TerminalTab, window, cx);
+            assert!(view.suggest.completion_items.is_empty());
+        });
+    });
+    let input: Vec<u8> = receiver
+        .try_iter()
+        .filter_map(|message| match message {
+            Msg::Input(bytes) => Some(bytes.into_owned()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(input, b"tl", "the first Tab inserts without navigation or command execution");
 }
 
 #[gpui::test]
@@ -293,6 +337,7 @@ fn native_shell_suggestion_and_zellij_alternate_screen_keep_their_input(cx: &mut
     window.update(|window, cx| {
         view.update(cx, |view, cx| {
             view.ghost_enabled = true;
+            view.completion_style = crate::display::CompletionStyle::Hybrid;
             // Shell 自己绘制的灰字在光标后，不能被当成已经接受的输入。
             feed(view, "❯ echo native_hint\x1b[11D".as_bytes());
             refresh_completion_from_grid(view, cx);

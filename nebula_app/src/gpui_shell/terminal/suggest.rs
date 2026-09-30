@@ -130,39 +130,18 @@ pub fn popup_active(state: &NebulaPaneState) -> bool {
 /// 弹窗高亮行循环移动。初始没有选中项；首次向任一方向导航都从首项进入，
 /// 避免 Up 在无选择态直接跳到列表末尾。
 pub fn popup_move(state: &mut NebulaPaneState, delta: isize) {
-    let len = state.completion_items.len();
-    if len == 0 {
-        return;
-    }
-    state.completion_selected = Some(match state.completion_selected {
-        Some(current) => (current as isize + delta).rem_euclid(len as isize) as usize,
-        None => 0,
-    });
+    state.completion_popup_move(delta);
 }
 
 /// 取走选中候选要键入的余量并关闭列表。
 pub fn popup_take(state: &mut NebulaPaneState) -> Option<crate::display::NebulaCompletionItem> {
-    let index = state.completion_selected?;
-    let insert = state.completion_items.get(index)?.clone();
-    state.completion_items.clear();
-    state.completion_selected = None;
-    state.completion_popup_requested = false;
-    Some(insert)
+    state.completion_popup_take()
 }
 
 /// Esc 关闭列表；候选清空但重算键保留，列表在行变化前不会复开（与旧壳
 /// `nebula_completion_popup_dismiss` 的缓存约定一致）。返回是否真的关了。
 pub fn popup_dismiss(state: &mut NebulaPaneState) -> bool {
-    if state.completion_items.is_empty() {
-        return false;
-    }
-    let line = if state.screen_line.is_empty() { &state.line_buf } else { &state.screen_line };
-    if !line.is_empty() {
-        state.completion_suppressed_line = Some(line.clone());
-    }
-    state.completion_items.clear();
-    state.completion_selected = None;
-    true
+    state.completion_popup_dismiss()
 }
 
 #[cfg(test)]

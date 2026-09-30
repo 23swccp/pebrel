@@ -1304,7 +1304,7 @@ fn localized_item_label(item: &PaletteItem, language: super::UiLanguage) -> &'st
         OpenSettings => "Open settings",
         OpenSettingsFile => "Open configuration file",
         ToggleGhost => "Toggle ghost completion",
-        CycleCompletionStyle => "Toggle completion style (inline / popup)",
+        CycleCompletionStyle => "Cycle completion mode (inline / list / hybrid)",
         PickBackgroundImage => "Choose background image...",
         CycleBackground => "Cycle background color",
         ResetAppearance => "Restore appearance defaults",

@@ -1130,7 +1130,7 @@ impl TerminalView {
             && !mods.function
             && !mods.shift
             && self.marked_text.is_none()
-            && !mode.contains(TermMode::ALT_SCREEN);
+            && !mode.intersects(TermMode::ALT_SCREEN | TermMode::VI);
         if plain && self.handle_completion_key(ks.key.as_str(), cx) {
             cx.notify();
             cx.stop_propagation();

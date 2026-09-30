@@ -246,6 +246,7 @@ pub(crate) fn suggest_update(
 ) {
     let line = line_override.unwrap_or_else(|| state.line_buf.clone());
     if !sources.enabled || line.is_empty() {
+        state.completion_popup_requested = false;
         state.clear_completion_hints();
         nebula_debug_log(format!(
             "suggest_skip enabled={} cwd={:?} line={:?} line_buf={:?}",
