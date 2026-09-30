@@ -14,6 +14,7 @@ struct Branch {
     busy: bool,
 }
 
+#[derive(Debug)]
 struct Snapshot {
     key: String,
     branches: Arc<[Branch]>,
@@ -21,7 +22,7 @@ struct Snapshot {
 }
 
 /// Each pane owns one repository snapshot; prefixes reuse it without another Git process.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Cache(Mutex<(u64, Option<Snapshot>)>);
 
 impl Cache {
@@ -80,6 +81,11 @@ pub(crate) fn complete(
                 1024 * 1024,
                 cancelled,
             )
+            .inspect_err(|error| {
+                log::debug!("Local Git completion query failed: {error}");
+                #[cfg(test)]
+                eprintln!("Local Git completion query failed: {error}");
+            })
             .ok()?;
             let text = std::str::from_utf8(&bytes).ok()?;
             let branches: Arc<[Branch]> = text
