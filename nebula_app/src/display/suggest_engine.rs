@@ -297,6 +297,11 @@ pub(crate) fn suggest_update_with_cancel(
     if cancelled() {
         return;
     }
+    if let Some(line) = line_override.as_deref()
+        && !state.completion_echo_ready(line)
+    {
+        return;
+    }
     let line = line_override.unwrap_or_else(|| state.line_buf.clone());
     if !sources.enabled || line.is_empty() {
         state.completion_popup_requested = false;

@@ -156,6 +156,7 @@ fn git_completion_native_shell_end_to_end() {
                     wait_for(cx, window.into(), &terminal, |view| if mode == crate::display::CompletionStyle::Popup { !view.suggest.completion_items.is_empty() } else { !view.suggest.suggestion.is_empty() }).await?;
                     let candidate_ms = start.elapsed().as_secs_f64() * 1000.0;
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
+                        assert_eq!(view.suggest.screen_line.trim(), prefix, "candidates must wait for the entire typed prefix");
                         if right {
                             view.on_key_down(&KeyDownEvent { keystroke: gpui::Keystroke::parse("right").unwrap(), is_held: false, prefer_character_input: false }, window, cx);
                         } else {
