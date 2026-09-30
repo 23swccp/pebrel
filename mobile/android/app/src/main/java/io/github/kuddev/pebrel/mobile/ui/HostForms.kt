@@ -138,7 +138,8 @@ private fun SegmentRow(label: Int, content: @Composable RowScope.() -> Unit) {
 
 @Composable
 fun LoginForm(host: HostProfile, onCancel: () -> Unit, passwordSaved: Boolean, busy: Boolean,
-              onClearPassword: () -> Unit, onConnect: (CharArray?, Boolean, Boolean, Boolean) -> Unit) {
+              onClearPassword: () -> Unit, attachmentLabel: String? = null,
+              onConnect: (CharArray?, Boolean, Boolean, Boolean) -> Unit) {
     var password by remember { mutableStateOf("") }
     var rememberPassword by rememberSaveable(host.id) { mutableStateOf(true) }
     var desktop by remember { mutableStateOf(false) }
@@ -169,9 +170,10 @@ fun LoginForm(host: HostProfile, onCancel: () -> Unit, passwordSaved: Boolean, b
         }
         HelperText(stringResource(if (rememberPassword) R.string.password_will_save_hint else R.string.password_not_saved_hint))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(desktop, { desktop = it }, enabled = !busy)
+            Checkbox(desktop, { desktop = it }, enabled = !busy && attachmentLabel == null)
             Text(stringResource(R.string.connect_pebrel), fontSize = 13.sp)
         }
+        if (attachmentLabel != null) HelperText(stringResource(R.string.remote_attach_target, attachmentLabel))
         if (desktop) {
             HelperText(stringResource(R.string.desktop_setup_hint))
             Row(verticalAlignment = Alignment.CenterVertically) {
