@@ -301,7 +301,7 @@ fn git_completion_native_shell_end_to_end() {
                 } else if demo.as_deref() == Some("history") {
                     wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
                         let term = session.term.lock();
-                        crate::display::nebula_prompt_line_from_raw_grid(&term, term.grid().cursor.point, &view.suggest.line_buf, &view.suggest.suggest_env).is_some_and(|line| line.input.trim().is_empty())
+                        crate::display::nebula_shell_ready_from_raw_grid(&term, &view.suggest.suggest_env)
                     })).await?;
                     type_demo_line(cx, window.into(), &terminal, "echo deployment finished").await?;
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
@@ -330,7 +330,7 @@ fn git_completion_native_shell_end_to_end() {
                     }
                     wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
                         let term = session.term.lock();
-                        crate::display::nebula_prompt_line_from_raw_grid(&term, term.grid().cursor.point, &view.suggest.line_buf, &view.suggest.suggest_env).is_some_and(|line| line.input.trim().is_empty())
+                        crate::display::nebula_shell_ready_from_raw_grid(&term, &view.suggest.suggest_env)
                     })).await?;
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
                         view.completion_style = mode;

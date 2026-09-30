@@ -278,12 +278,38 @@ mod tests {
                 assert_eq!(r.suggestion, "od");
             }
         }
-        assert_eq!(
-            query(SuggestEnv::Local, "ssh -F config -iidentity", CompletionStyle::Popup)
-                .completion_items[0]
-                .insert,
-            ".pem"
-        );
+        for (program, expected) in
+            [("sh", "-iidentity.pem"), ("pwsh", "'-iidentity.pem'"), ("cmd", "-iidentity.pem")]
+        {
+            let execution = PaneExecContext::from_pty_options(&nebula_terminal::tty::Options {
+                shell: Some(nebula_terminal::tty::Shell::new(program.into(), vec![])),
+                ..Default::default()
+            });
+            let line = "ssh -F config -iidentity";
+            for style in [CompletionStyle::Inline, CompletionStyle::Popup, CompletionStyle::Hybrid]
+            {
+                let result = session
+                    .request(
+                        root.path().to_string_lossy().into(),
+                        SuggestEnv::Local,
+                        line.into(),
+                        style,
+                        Some(&execution),
+                    )
+                    .calculate(&Cancellation::default());
+                let edit = if style == CompletionStyle::Popup {
+                    &result.completion_items[0]
+                } else {
+                    result.suggestion_edit.as_ref().unwrap()
+                };
+                let accepted: String = line
+                    .chars()
+                    .take(line.chars().count() - edit.replace_chars)
+                    .chain(edit.insert.chars())
+                    .collect();
+                assert_eq!(accepted, format!("ssh -F config {expected}"), "{program} {style:?}");
+            }
+        }
         assert!(
             query(SuggestEnv::Local, "ssh -F none completion-", CompletionStyle::Popup)
                 .completion_items
