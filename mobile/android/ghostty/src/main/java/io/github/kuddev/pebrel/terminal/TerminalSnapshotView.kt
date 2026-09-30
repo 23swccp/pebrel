@@ -29,6 +29,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     var wrapLines = false
         set(value) {
             if (field == value) return
+            selection.clear()
             field = value
             reproject()
             offsetX = 0f
@@ -65,12 +66,28 @@ class TerminalSnapshotView(context: Context) : View(context) {
     private var multiTouch = false
     var pinchZoom = true
     var onZoomChanged: ((Int, Boolean) -> Unit)? = null
-    var onCopyRequested: ((String) -> Unit)? = null
+    var pasteTarget: TerminalInputTarget? = null
+    private val selection: TerminalSelection = TerminalSelection(this,
+        canPaste = { (pasteTarget ?: inputTarget) != null },
+        paste = { (pasteTarget ?: inputTarget)?.paste(it) == true },
+        changed = { reproject(); constrainOffsets() },
+        startScroll = { event, x, y ->
+            val down = MotionEvent.obtain(event)
+            down.action = MotionEvent.ACTION_DOWN
+            down.setLocation(x, y)
+            gestures.onTouchEvent(down)
+            down.recycle()
+            gestures.onTouchEvent(event)
+        },
+    )
     var frame: TerminalFrame? = null
         set(value) {
             if (field === value) return
             val follow = field == null || followOutput
             field = value
+            // 选择固定在用户看到的投影帧上；退出选择后才恢复到最新输出。
+            if (selection.active && value != null) { invalidate(); return }
+            if (value == null) selection.clear()
             metrics()
             reproject()
             // 桌面网格包含光标下方的空白；从网格底部回跳会把真实输出顶出屏幕。
@@ -84,6 +101,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     fun setFont(typeface: Typeface, size: Int) {
         val pixels = size.coerceIn(8, 32) * resources.displayMetrics.scaledDensity
         if (paint.typeface == typeface && fontPixels == pixels) return
+        selection.clear()
         paint.typeface = typeface
         fontPixels = pixels
         metrics()
@@ -112,7 +130,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
         renderedFrame = if (source != null && columns > 0) reflowTerminal(source, columns) else source
     }
 
-    private fun maxY() = max(0f, (renderedFrame?.rows?.size ?: 0) * cellHeight - height)
+    private fun maxY() = max(0f, ((selection.frame ?: renderedFrame)?.rows?.size ?: 0) * cellHeight - height)
     private fun revealCursor(horizontal: Boolean) {
         val frame = renderedFrame?.takeIf { it.cursorVisible } ?: return
         val y = frame.cursorY * cellHeight
@@ -125,11 +143,12 @@ class TerminalSnapshotView(context: Context) : View(context) {
         }
     }
     private fun constrainOffsets() {
-        offsetX = offsetX.coerceIn(0f, max(0f, (renderedFrame?.columns ?: 0) * cellWidth - width))
+        offsetX = offsetX.coerceIn(0f, max(0f, ((selection.frame ?: renderedFrame)?.columns ?: 0) * cellWidth - width))
         offsetY = offsetY.coerceIn(0f, maxY())
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        selection.clear()
         metrics()
         reproject()
         if (followOutput && frame?.cursorVisible != true) offsetY = maxY()
@@ -138,7 +157,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        val frame = renderedFrame ?: return
+        val frame = selection.frame ?: renderedFrame ?: return
         val checkpoint = canvas.save()
         canvas.clipRect(0, 0, width, height)
         canvas.drawColor(frame.background)
@@ -148,7 +167,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
         for (y in first until last) frame.rows[y]?.let {
             TerminalCellPainter.row(canvas, paint, frame, it, y, cellWidth, cellHeight, baseline)
         }
-        if (frame.cursorVisible) {
+        if (frame.cursorVisible && !selection.active) {
             paint.color = frame.cursorColor
             paint.alpha = 110
             canvas.drawRect(frame.cursorX * cellWidth, frame.cursorY * cellHeight,
@@ -160,6 +179,8 @@ class TerminalSnapshotView(context: Context) : View(context) {
             canvas.drawText(composingText, frame.cursorX * cellWidth, frame.cursorY * cellHeight + baseline, paint)
         }
         canvas.restoreToCount(checkpoint)
+        selection.geometry(cellWidth, cellHeight, offsetX, offsetY)
+        selection.draw(canvas)
     }
 
     private val scaling = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -189,7 +210,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
         onZoomChanged?.invoke((fontPixels * zoom / resources.displayMetrics.scaledDensity).roundToInt(), gesturing)
     }
 
-    private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+    private val gestures: GestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(event: MotionEvent) = true
         override fun onSingleTapUp(event: MotionEvent): Boolean = performClick()
         override fun onDoubleTap(event: MotionEvent): Boolean {
@@ -216,9 +237,11 @@ class TerminalSnapshotView(context: Context) : View(context) {
             return true
         }
         override fun onLongPress(event: MotionEvent) {
-            // Copy requires an explicit action; merely holding the screen does not
-            // replace the user's clipboard. Scope is the displayed snapshot.
-            if (!multiTouch) onCopyRequested?.invoke(frame?.text().orEmpty())
+            if (!multiTouch) renderedFrame?.let {
+                followInputCursor = false
+                selection.geometry(cellWidth, cellHeight, offsetX, offsetY)
+                selection.begin(it, event.x, event.y)
+            }
         }
     })
 
@@ -226,6 +249,12 @@ class TerminalSnapshotView(context: Context) : View(context) {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) multiTouch = false
         if (event.pointerCount >= 2) multiTouch = true
         parent?.requestDisallowInterceptTouchEvent(true)
+        selection.geometry(cellWidth, cellHeight, offsetX, offsetY)
+        if (selection.touch(event)) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+                parent?.requestDisallowInterceptTouchEvent(false)
+            return true
+        }
         if (pinchZoom) scaling.onTouchEvent(event)
         if (multiTouch) {
             val cancel = MotionEvent.obtain(event)
@@ -271,6 +300,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        selection.clear()
         inputGeneration++
         composingText = ""
         super.onDetachedFromWindow()
@@ -280,6 +310,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
         handleKey(code, event, if (event.repeatCount > 0) 2 else 1) || super.onKeyDown(code, event)
     override fun onKeyUp(code: Int, event: KeyEvent): Boolean = handleKey(code, event, 0) || super.onKeyUp(code, event)
     private fun handleKey(code: Int, event: KeyEvent, action: Int): Boolean {
+        if (selection.key(code, event, action)) return true
         val target = inputTarget ?: return false
         if (KeyEvent.isModifierKey(code) || code in setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN)) return false
         val mods = (if (event.isShiftPressed) 1 else 0) or (if (event.isCtrlPressed) 2 else 0) or
@@ -290,4 +321,11 @@ class TerminalSnapshotView(context: Context) : View(context) {
         target.key(code, mods, action, text, event.getUnicodeChar(0))
         return true
     }
+
+    override fun onInitializeAccessibilityNodeInfo(info: android.view.accessibility.AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        selection.accessibility(info)
+    }
+    override fun performAccessibilityAction(action: Int, arguments: android.os.Bundle?): Boolean =
+        selection.accessibilityAction(action) || super.performAccessibilityAction(action, arguments)
 }

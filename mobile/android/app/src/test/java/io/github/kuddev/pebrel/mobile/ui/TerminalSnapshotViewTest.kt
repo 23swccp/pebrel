@@ -38,6 +38,117 @@ import java.io.File
 @Config(sdk = [28])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TerminalSnapshotViewTest {
+    private fun longPress(view: TerminalSnapshotView, x: Float, y: Float): Long {
+        eventTime = android.os.SystemClock.uptimeMillis()
+        val down = eventTime
+        touch(view, down, MotionEvent.ACTION_DOWN, x to y)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+            .idleFor(java.time.Duration.ofMillis(700))
+        eventTime = android.os.SystemClock.uptimeMillis()
+        return down
+    }
+
+    @Test fun longPressFreezesUnicodeCellsUntilCopyAndThenReleasesTheHighlight() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val theme = intArrayOf(Color.WHITE, background, Color.WHITE) + IntArray(16) { Color.RED }
+        val original = decodeDesktopScreen(JSONObject("""{"version":1,"columns":8,"rows":[
+            [["中",2,14251863,-258,0],["é",1,14251863,-258,0],["😀",2,14251863,-258,0],
+             ["█",1,65280,-258,0],["A",1,14251863,-258,0],[" ",1,-257,255,0]]
+            ],"cursor":[0,0,0],"palette":[]}"""), theme)
+        val view = TerminalSnapshotView(activity).apply { frame = original }
+        activity.setContentView(view)
+        view.layout(0, 0, 300, 120)
+        val down = longPress(view, 10f, 8f)
+        touch(view, down, MotionEvent.ACTION_UP, 10f to 8f)
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_A,
+            KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_CTRL_ON)))
+        view.onKeyUp(KeyEvent.KEYCODE_A, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_A))
+        view.frame = TerminalFrame(arrayOf(row("NEW")), intArrayOf(3, 1, 0, 0, 0, background, red, 2))
+        assertTrue(view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY, null))
+        val clip = activity.getSystemService(android.content.ClipboardManager::class.java).primaryClip
+        assertEquals("中é😀█A", clip?.getItemAt(0)?.text.toString())
+        assertFalse("copy must end selection", view.performAccessibilityAction(
+            android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY, null))
+        val fresh = TerminalSnapshotView(activity).apply { frame = view.frame; layout(0, 0, view.width, view.height) }
+        assertTrue("selection cannot leave stale pixels", render(fresh).sameAs(render(view)))
+        activity.finish()
+    }
+
+    @Test fun copyingWrappedSelectionKeepsHardBreaksAndSpacesAndUsesTheFrozenProjection() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val original = TerminalFrame(arrayOf(row("ab cd ef"), row("gh      "), row("next    ")),
+            intArrayOf(8, 3, 0, 0, 0, background, red, 2), booleanArrayOf(true, false, false))
+        val view = TerminalSnapshotView(activity).apply {
+            setFont(Typeface.MONOSPACE, 20); wrapLines = true; frame = original
+        }
+        activity.setContentView(view)
+        view.layout(0, 0, 39, 480)
+        assertTrue(projected(view).columns in 2..3)
+        val down = longPress(view, 5f, 8f)
+        touch(view, down, MotionEvent.ACTION_UP, 5f to 8f)
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_A,
+            KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A, 0, KeyEvent.META_CTRL_ON)))
+        view.onKeyUp(KeyEvent.KEYCODE_A, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_A))
+        view.frame = TerminalFrame(arrayOf(row("NEW")), intArrayOf(3, 1, 0, 0, 0, background, red, 2))
+        assertTrue(view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY, null))
+        assertEquals("ab cd efgh\nnext", activity.getSystemService(android.content.ClipboardManager::class.java)
+            .primaryClip?.getItemAt(0)?.text.toString())
+        val again = longPress(view, 5f, 8f)
+        touch(view, again, MotionEvent.ACTION_UP, 5f to 8f)
+        view.wrapLines = false
+        assertFalse("changing the projection must clear obsolete cell coordinates", view.performAccessibilityAction(
+            android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY, null))
+        activity.finish()
+    }
+
+    @Test fun draggingTheEndHandleAcrossTheStartPreservesItsIdentity() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val view = TerminalSnapshotView(activity).apply {
+            setFont(Typeface.MONOSPACE, 20)
+            frame = TerminalFrame(arrayOf(row("AAA BBB CCC")), intArrayOf(11, 1, 0, 0, 0, this@TerminalSnapshotViewTest.background, red, 2))
+        }
+        activity.setContentView(view)
+        view.layout(0, 0, 350, 120)
+        val metrics = android.graphics.Paint().apply { typeface = Typeface.MONOSPACE; textSize = 20 * view.resources.displayMetrics.scaledDensity }
+        val cell = metrics.measureText("M")
+        val down = longPress(view, 5.5f * cell, 8f)
+        touch(view, down, MotionEvent.ACTION_MOVE, 0.5f * cell to 8f)
+        touch(view, down, MotionEvent.ACTION_UP, 0.5f * cell to 8f)
+        assertTrue(view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY, null))
+        assertEquals("A ", activity.getSystemService(android.content.ClipboardManager::class.java)
+            .primaryClip?.getItemAt(0)?.text.toString())
+        activity.finish()
+    }
+
+    @Test fun readOnlySelectionCannotPasteAndRejectedPasteKeepsSelection() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val view = TerminalSnapshotView(activity).apply {
+            frame = TerminalFrame(arrayOf(row("copy")), intArrayOf(4, 1, 0, 0, 0, this@TerminalSnapshotViewTest.background, red, 2))
+        }
+        activity.setContentView(view)
+        view.layout(0, 0, 300, 120)
+        val down = longPress(view, 10f, 8f)
+        touch(view, down, MotionEvent.ACTION_UP, 10f to 8f)
+        val clipboard = activity.getSystemService(android.content.ClipboardManager::class.java)
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("fixture", "paste"))
+        val info = android.view.accessibility.AccessibilityNodeInfo.obtain()
+        view.onInitializeAccessibilityNodeInfo(info)
+        assertFalse(info.actionList.contains(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_PASTE))
+        var pasted = 0
+        var accept = false
+        view.pasteTarget = object : TerminalInputTarget {
+            override fun text(text: String) = false
+            override fun key(code: Int, modifiers: Int, action: Int, text: String, unshifted: Int) = false
+            override fun paste(text: String): Boolean { assertEquals("paste", text); pasted++; return accept }
+        }
+        assertTrue(view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_PASTE, null))
+        accept = true
+        assertTrue(view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_PASTE, null))
+        assertEquals(2, pasted)
+        assertFalse(view.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_COPY, null))
+        activity.finish()
+    }
+
     @Test fun tappingPcSurfaceOpensDirectInputAndStaleImeCannotWriteAfterToggle() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val messages = mutableListOf<String>()

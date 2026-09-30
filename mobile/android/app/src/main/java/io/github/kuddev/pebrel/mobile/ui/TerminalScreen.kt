@@ -144,7 +144,8 @@ fun DesktopTerminalScreen(desktop: DesktopWorkspace, pane: DesktopPane, reposito
             prefs.pinchZoom, { size -> repository.display.update { it.copy(fontSize = size) } },
             Modifier.weight(1f).fillMaxWidth(), frame = if (output.target == identity) output.frame else null,
             inputTarget = input.takeIf { enabled && direct }, keyboardRequest = keyboardRequest,
-            loading = output.loading, connected = desktop.status == "ready", wrapLines = wrapLines)
+            loading = output.loading, connected = desktop.status == "ready", wrapLines = wrapLines,
+            pasteTarget = input.takeIf { enabled })
         if (output.loading && output.text.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
         CommandComposer(identity, repository, enabled, direct, {
             direct = it
