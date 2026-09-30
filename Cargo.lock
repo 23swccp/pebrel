@@ -5295,7 +5295,6 @@ dependencies = [
  "log",
  "markdown",
  "mlua",
- "nebula-completions",
  "nebula-settings",
  "nebula-split",
  "nebula_config",
@@ -5307,6 +5306,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "parking_lot",
+ "pebrel-completions",
  "pebrel-mobile-link",
  "png 0.17.16",
  "polling",
@@ -5343,17 +5343,6 @@ dependencies = [
  "winreg",
  "xdg",
  "zeroize",
-]
-
-[[package]]
-name = "nebula-completions"
-version = "2.0.0"
-dependencies = [
- "lscolors",
- "nu-ansi-term",
- "nucleo-matcher",
- "unicase",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -6454,6 +6443,17 @@ checksum = "112d82ceb8c5bf524d9af484d4e4970c9fd5a0cc15ba14ad93dccd28873b0629"
 dependencies = [
  "digest 0.11.3",
  "hmac 0.13.0",
+]
+
+[[package]]
+name = "pebrel-completions"
+version = "2.0.0"
+dependencies = [
+ "lscolors",
+ "nu-ansi-term",
+ "nucleo-matcher",
+ "unicase",
+ "unicode-segmentation",
 ]
 
 [[package]]

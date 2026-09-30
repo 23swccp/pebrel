@@ -88,7 +88,7 @@ impl Request {
             return Candidates::default();
         }
         let semantic = self.git.and_then(|(cache, execution)| {
-            use nebula_completions::command_context::ShellSyntax;
+            use pebrel_completions::command_context::ShellSyntax;
             let syntax = match execution.shell_program() {
                 Some(program) => ShellSyntax::for_program(program),
                 None => ShellSyntax::for_program(&crate::platform::shell::default_shell_id()),

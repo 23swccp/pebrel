@@ -3,8 +3,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use nebula_completions::Suggestion;
-use nebula_completions::command_context::{GitSwitchContext, ShellSyntax};
+use pebrel_completions::Suggestion;
+use pebrel_completions::command_context::{GitSwitchContext, ShellSyntax};
 
 use crate::runtime_exec::PaneExecContext;
 

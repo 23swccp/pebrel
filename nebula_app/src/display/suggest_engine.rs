@@ -5,8 +5,8 @@
 //! 数据源与排序规则两个壳共用，避免第二套平行实现（与 `ssh_session` 的
 //! `SshEventHost` 泛型下沉同一手法）。
 
-use nebula_completions::file::complete_item_with_cancel;
-use nebula_completions::{CompletionOptions, Span};
+use pebrel_completions::file::complete_item_with_cancel;
+use pebrel_completions::{CompletionOptions, Span};
 
 use super::state::{CompletionStyle, NebulaCompletionItem, NebulaCompletionKind, NebulaPaneState};
 use super::{
@@ -602,7 +602,7 @@ fn popup_edit(line: &str, candidate: &str) -> (usize, String) {
 pub(crate) fn semantic_candidates(
     line: &str,
     style: CompletionStyle,
-    candidates: Vec<nebula_completions::Suggestion>,
+    candidates: Vec<pebrel_completions::Suggestion>,
 ) -> Candidates {
     let mut result = Candidates::default();
     let items: Vec<_> = candidates
