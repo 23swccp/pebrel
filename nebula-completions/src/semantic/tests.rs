@@ -10,7 +10,6 @@ fn branches_respect_argument_roles_directories_and_worktrees() {
         for line in [
             "git switch ",
             "git switch --quiet fe",
-            "git switch -c new fe",
             "git switch -- fe",
             "git -C \"中文 repo\" switch \"fe\"",
         ] {
@@ -27,13 +26,14 @@ fn branches_respect_argument_roles_directories_and_worktrees() {
     }
     for line in [
         "git switch --detach ma",
+        "git switch -c new fe",
         "git switch -C new ma",
         "git merge ma",
         "git rebase --onto ma",
         "git rebase main fe",
         "git checkout -b new ma",
     ] {
-        assert_eq!(context(line).source, Source::Branches { include_busy: true }, "{line}");
+        assert_eq!(context(line).source, Source::Revisions { include_busy: true }, "{line}");
     }
     for line in [
         "git switch -c ",
@@ -67,7 +67,7 @@ fn paths_and_ambiguous_arguments_retain_directory_scope() {
     }
     assert_eq!(
         context("git checkout src").source,
-        Source::BranchesAndPaths { include_busy: false }
+        Source::RevisionsAndPaths { include_busy: false }
     );
     for line in
         ["git -C repo", "git -C one -C two", "npm --prefix repo", "pnpm -C repo", "yarn --cwd repo"]
@@ -78,7 +78,7 @@ fn paths_and_ambiguous_arguments_retain_directory_scope() {
     assert!(context("npm --prefix one --prefix two").directories.is_empty());
     assert_eq!(
         context("git checkout --ignore-other-worktrees fe").source,
-        Source::BranchesAndPaths { include_busy: true }
+        Source::RevisionsAndPaths { include_busy: true }
     );
     assert_eq!(context("git -C one checkout -- file").directories, ["one"]);
 }

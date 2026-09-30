@@ -85,7 +85,12 @@ impl Session {
         // 只有需要本机 Git I/O 的请求才复制启动环境。
         let git = if local
             && semantic.as_ref().is_some_and(|c| {
-                matches!(c.source, Source::Branches { .. } | Source::BranchesAndPaths { .. })
+                matches!(
+                    c.source,
+                    Source::Branches { .. }
+                        | Source::Revisions { .. }
+                        | Source::RevisionsAndPaths { .. }
+                )
             }) {
             execution.cloned().map(|execution| (self.git.clone(), execution))
         } else {
@@ -115,7 +120,9 @@ impl Request {
         }
         let semantic = self.semantic.as_ref().map(|context| match context.source {
             Source::Words(_) | Source::Options => context.static_candidates(),
-            Source::Branches { .. } | Source::BranchesAndPaths { .. } => {
+            Source::Branches { .. }
+            | Source::Revisions { .. }
+            | Source::RevisionsAndPaths { .. } => {
                 self.git.as_ref().map_or_else(Vec::new, |(cache, execution)| {
                     crate::git_completion::complete(cache, execution, &self.cwd, context, &|| {
                         cancellation.is_cancelled()
@@ -135,7 +142,7 @@ impl Request {
                 candidates.into_iter().map(Into::into).collect();
             let mut pending = None;
             if let Some(context) = self.semantic.as_ref().filter(|c| {
-                matches!(c.source, Source::Paths { .. } | Source::BranchesAndPaths { .. })
+                matches!(c.source, Source::Paths { .. } | Source::RevisionsAndPaths { .. })
             }) {
                 let (paths, demand) = paths::complete(
                     &Input { cwd: &self.cwd, env: &self.env, line: &self.line },
