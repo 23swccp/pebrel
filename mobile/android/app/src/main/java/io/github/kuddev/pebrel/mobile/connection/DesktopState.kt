@@ -2,6 +2,14 @@ package io.github.kuddev.pebrel.mobile.connection
 
 import org.json.JSONObject
 
+/** IDs from the shared OS icon catalog, based on the host response rather than its name. */
+fun desktopOsIcon(os: String): String = when (val normalized = os.lowercase(java.util.Locale.ROOT)) {
+    "windows", "win32" -> "windows"
+    "macos", "darwin" -> "macos"
+    "linux", "ubuntu", "debian", "centos", "rhel", "fedora", "rocky", "alpine", "arch", "suse", "nixos", "kali", "freebsd" -> normalized
+    else -> "term"
+}
+
 data class DesktopPane(
     val window: Long, val id: Long, val title: String, val cwd: String,
     val task: String, val state: String, val sequence: Long,

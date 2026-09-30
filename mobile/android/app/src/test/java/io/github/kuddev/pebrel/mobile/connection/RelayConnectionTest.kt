@@ -18,6 +18,31 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class RelayConnectionTest {
+    @Test fun remoteDiscoveryKeepsStableTargetsAndSelectsTheHostCommandSyntax() {
+        val tmux = RemoteSessions.parse("\u001eos\nDarwin\n\u001etmux\n${'$'}7\tWork\t1\t100:200\n" +
+            "\u001ewindows\n${'$'}7\t@9\t0\tEditor\n\u001eherdr\n\u001eend\n")
+        assertEquals("macos", tmux.os)
+        val session = tmux.sessions.single()
+        assertEquals("${'$'}7", session.id)
+        assertEquals("@9", session.windows.single().id)
+        val command = RemoteSessions.attachCommand(RemoteAttachment(session, session.windows.single()))
+        assertTrue(command.startsWith("sh -c "))
+        assertTrue(command.contains("100:200"))
+        assertFalse(command.contains("Work"))
+        assertThrows(IllegalArgumentException::class.java) {
+            RemoteSessions.attachCommand(RemoteAttachment(session.copy(id = "${'$'}7;bad")))
+        }
+        val windows = RemoteSessions.parse("\u001eos\nwindows\n\u001eherdr\n" +
+            "{\"sessions\":[{\"name\":\"work.dev\",\"running\":true}]}\n\u001eend\n")
+        assertTrue(windows.sessions.single().windowsHost)
+        val encoded = RemoteSessions.attachCommand(RemoteAttachment(windows.sessions.single(), RemoteWindow("tab_1", "Editor")))
+        val script = String(java.util.Base64.getDecoder().decode(encoded.substringAfterLast(' ')), Charsets.UTF_16LE)
+        assertTrue(script.contains("tab focus 'tab_1'"))
+        assertTrue(script.contains("session attach 'work.dev'"))
+        assertFalse(script.contains("exec "))
+        assertEquals("ubuntu", RemoteSessions.parse("\u001eos\nLinux\n\u001edistro\nID=ubuntu\n\u001eend\n").os)
+    }
+
     @Test fun discoveredAddressesNeverReplacePinnedIdentityOrInvitationCredentials() {
         val pin = "sha256/${"a".repeat(43)}="
         val secure = SecureRelayProfile("b".repeat(43), "device", "c".repeat(43), false)
