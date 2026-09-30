@@ -82,6 +82,10 @@ fn git_completion_native_shell_end_to_end() {
         Some(output.join("config"))
     );
     assert!(!output.join("result.json").exists(), "use a fresh QA directory");
+    if demo.is_some() {
+        // Powerline 由 shell 读取共享持久化设置；只写本次录制的隔离配置。
+        nebula_settings::persist_keys(&[("powerline", "1".to_owned())]).unwrap();
+    }
     let repository = crate::git_completion::tests::repository();
     for name in
         ["qa inline 文件.txt", "qa popup 文件.txt", "qa hybrid 文件.txt", "qa right 文件.txt"]
@@ -195,7 +199,6 @@ fn git_completion_native_shell_end_to_end() {
         settings.ghost = true;
         if demo.is_some() {
             settings.font_size_px = 18.0;
-            settings.powerline = true;
         }
         cx.set_global(settings);
         crate::gpui_shell::theme::apply_chrome_theme(cx);
