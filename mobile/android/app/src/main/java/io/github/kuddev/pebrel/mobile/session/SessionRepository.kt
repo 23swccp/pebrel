@@ -78,12 +78,14 @@ class SessionRepository(private val context: Context,
     private var readGeneration = 0L
     private var desktopReader: DesktopReadScheduler? = null
     private val desktopClients = java.util.concurrent.ConcurrentHashMap<String, DesktopRuntimeClient>()
+    private val desktopTransitions = mutableMapOf<String, DesktopTransitions>()
     private val conversationCache = ConversationCache()
     private var activeGit: DesktopGit? = null
     private var foreground = false
     private var lanDiscovery: PairingDiscovery? = null
     private var lanDiscoveryJob: Job? = null
     private val resumeChecks = mutableMapOf<String, Job>()
+    private val network = DesktopNetworkMonitor(context, ::networkChanged)
     private val reconnect = DesktopReconnect(scope) { id ->
         val current = computers.value.find { it.id == id }
         if (foreground && current?.hasConnected == true && current.status != "ready" &&
@@ -98,22 +100,39 @@ class SessionRepository(private val context: Context,
         resumeChecks.values.forEach(Job::cancel)
         resumeChecks.clear()
         refreshLanDiscovery()
-        if (!value) return
+        if (!value) { network.stop(); return }
+        network.start()
         for (desktop in computers.value.filter { it.hasConnected && it.relayProfile != null }) {
             val client = desktopClients[desktop.id]
             if (client == null && DesktopReconnect.retryable(desktop.failure)) reconnect.schedule(desktop.id, immediate = true)
-            else if (client != null && desktop.status == "ready") resumeChecks[desktop.id] = scope.launch {
+            else if (client != null && desktop.status == "ready" && !client.recentlyActive) resumeChecks[desktop.id] = scope.launch {
                 try { withTimeout(5000) { client.request("runtime.describe") } }
                 catch (error: Exception) {
                     if (error is CancellationException && error !is TimeoutCancellationException) throw error
                     withContext(Dispatchers.Main) {
                         if (foreground) {
                             desktopFailed(desktop.id, client, DesktopFailureKind.NETWORK, immediate = true)
-                            client.close()
+                            scope.launch { client.close() }
                         }
                     }
                 }
             }
+        }
+    }
+
+    internal fun networkChanged() {
+        if (!foreground) return
+        resumeChecks.values.forEach(Job::cancel)
+        resumeChecks.clear()
+        for (desktop in computers.value.filter {
+            it.hasConnected && it.relayProfile != null && it.status != "approval" && DesktopReconnect.retryable(it.failure)
+        }) {
+            val client = desktopClients[desktop.id]
+            if (client != null) {
+                // 旧 TCP 不能迁移到新网络；结束旧连接代，避免等系统超时再恢复。
+                desktopFailed(desktop.id, client, DesktopFailureKind.NETWORK, immediate = true)
+                scope.launch { client.close() }
+            } else reconnect.schedule(desktop.id, immediate = true)
         }
     }
 
@@ -424,6 +443,8 @@ class SessionRepository(private val context: Context,
     fun forgetRelay(profile: RelayProfile) {
         computers.value.filter { it.host.id == profile.id }.forEach { closeDesktop(it.id) }
         savedRelays.value = savedRelays.value.filterNot { it.id == profile.id }
+        desktopTransitions.remove("relay:${profile.id}")
+        preferences.edit().remove("desktop_transitions_relay:${profile.id}").apply()
         persistRelays()
     }
     fun connectRelay(profile: RelayProfile): String {
@@ -452,17 +473,25 @@ class SessionRepository(private val context: Context,
         computers.value = if (previous == null) computers.value + entry else computers.value.map { if (it.id == id) entry else it }
         refreshLanDiscovery()
         SessionService.ensureStarted(context)
-        val transitions = DesktopTransitions()
+        val transitions = desktopTransitions.getOrPut(id) {
+            DesktopTransitions(if (relayProfile == null) null else
+                runCatching { preferences.getString("desktop_transitions_$id", null)?.let(::JSONObject) }.getOrNull())
+        }
         val negotiatedInput = AtomicBoolean(false)
         lateinit var client: DesktopRuntimeClient
         client = DesktopRuntimeClient(transport, { snapshot ->
             val tabs = parseDesktopTabs(snapshot)
             val panes = tabs.flatMap { it.panes }
             val windows = snapshot.getJSONArray("windows").let { rows -> (0 until rows.length()).map { rows.getJSONObject(it).getLong("id") } }
-            val events = transitions.observe(snapshot)
             main.post {
                 if (desktopClients[id] !== client) return@post
                 if (computers.value.none { it.id == id }) return@post
+                // 先核对连接代，再推进电脑的通知游标；旧连接不能吞掉新事件。
+                val revision = transitions.revision
+                val events = transitions.observe(snapshot)
+                if (relayProfile != null && revision != transitions.revision) {
+                    preferences.edit().putString("desktop_transitions_$id", transitions.checkpoint().toString()).apply()
+                }
                 if (relayProfile != null && savedRelays.value.find { it.id == relayProfile.id } != relayProfile) {
                     if (savedRelays.value.size < 64 || savedRelays.value.any { it.id == relayProfile.id }) {
                         savedRelays.value = savedRelays.value.filterNot { it.id == relayProfile.id } + relayProfile
@@ -475,7 +504,7 @@ class SessionRepository(private val context: Context,
                     allowInput = input, pairingApproval = null,
                     runtimeProcess = snapshot.getLong("process_id"), tabs = tabs, windows = windows) else it }
                 refreshLanDiscovery()
-                if (computers.value.any { it.id == id }) events.forEach { SessionNotices.task(context, id, host.name, it) }
+                events.forEach { SessionNotices.task(context, id, host.name, it, snapshot.getLong("process_id")) }
             }
         }, { failure -> main.post {
             desktopFailed(id, client, failure)
@@ -680,6 +709,7 @@ class SessionRepository(private val context: Context,
         trust.value?.answer?.complete(false); trust.value = null
         live.value.forEach { it.terminal.finishIfRunning() }; live.value = emptyList()
         val clients = desktopClients.values.toList(); desktopClients.clear(); computers.value = emptyList()
+        desktopTransitions.clear()
         refreshLanDiscovery()
         drafts.value = emptyMap()
         recentCommands.value = emptyMap()
@@ -687,6 +717,7 @@ class SessionRepository(private val context: Context,
         stopIdleService()
     }
     fun closeDesktop(id: String) {
+        desktopTransitions.remove(id)
         if (activeGit?.target?.desktop == id) activeGit = null
         reconnect.forget(id)
         resumeChecks.remove(id)?.cancel()

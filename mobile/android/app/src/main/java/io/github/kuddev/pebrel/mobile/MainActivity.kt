@@ -198,6 +198,8 @@ class MainActivity : ComponentActivity() {
                 desktopId = target.getStringExtra("desktop").orEmpty()
                 windowId = target.getLongExtra("window", -1)
                 paneId = target.getLongExtra("pane", -1)
+                paneProcess = target.getLongExtra("process", -1).takeIf { it >= 0 }
+                repository.restoreDesktop(desktopId)?.let { desktopId = it }
                 showPage("pane")
             }
         }

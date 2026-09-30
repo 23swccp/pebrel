@@ -217,6 +217,15 @@ class RelayConnectionTest {
         assertTrue(reducer.observe(snapshot(3, "finished").put("mobile_policy", JSONObject().put("notifications", false))).isEmpty())
         assertTrue(reducer.observe(snapshot(3, "finished").put("mobile_policy", JSONObject().put("notifications", true))).isEmpty())
         assertEquals(1, reducer.observe(snapshot(4, "finished")).size)
+        val recovered = DesktopTransitions(reducer.checkpoint())
+        assertTrue(recovered.observe(snapshot(4, "finished")).isEmpty())
+        assertEquals(1, recovered.observe(snapshot(5, "waiting_input")).size)
+        val muted = snapshot(6, "finished").put("mobile_policy", JSONObject().put("notifications", false))
+        assertTrue(recovered.observe(muted).isEmpty())
+        val restored = DesktopTransitions(recovered.checkpoint())
+        assertTrue(restored.observe(snapshot(6, "finished")).isEmpty())
+        assertTrue(restored.observe(snapshot(7, "finished").put("process_id", 99)).isEmpty())
+        assertTrue(DesktopTransitions(JSONObject("{\"panes\":false}")).observe(snapshot(8, "finished")).isEmpty())
     }
 
     @Test fun rejectedSendDisconnectsOnceAndSettlesOtherPendingRequests() = runBlocking {
