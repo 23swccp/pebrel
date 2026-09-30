@@ -46,6 +46,9 @@ the picker retains its own plumbing-distro filter. Non-Windows hosts return no
 registered WSL destinations. SSH/WSL sessions reuse remote directory demand and
 never query the host connection cache. An execution snapshot identifying WSL
 overrides a stale local environment label before any source selection.
+Typed nested shells without a verified directory channel retain their scoped
+history for path arguments. An unavailable path source must not hide that history
+or fall back to the host filesystem; the existing issue-353 regression covers it.
 
 ## Rejected alternatives
 

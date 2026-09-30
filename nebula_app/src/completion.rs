@@ -92,7 +92,10 @@ impl Session {
         } else {
             ShellSyntax::Literal
         };
-        let semantic = SemanticContext::parse(&line, line.len(), syntax);
+        let semantic = SemanticContext::parse(&line, line.len(), syntax).filter(|context| {
+            // 无目录通道的嵌套 shell 仍能召回本会话历史；空路径来源不应把历史挡住。
+            !matches!(context.source, Source::Paths { .. }) || local || env.can_query_remote_paths()
+        });
         // 只有需要本机 Git I/O 的请求才复制启动环境。
         let git = if local
             && semantic.as_ref().is_some_and(|c| {
