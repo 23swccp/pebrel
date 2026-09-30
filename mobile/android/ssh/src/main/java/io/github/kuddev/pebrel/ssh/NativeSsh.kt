@@ -18,5 +18,6 @@ internal object NativeSsh {
     external fun resize(id: Long, columns: Int, rows: Int, width: Int, height: Int)
     external fun awaitExit(id: Long): Int
     external fun sftp(id: Long, request: String): String
+    external fun query(id: Long, command: String): String
     external fun close(id: Long)
 }

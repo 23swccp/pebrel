@@ -27,6 +27,7 @@ import io.github.kuddev.pebrel.mobile.connection.DesktopPane
 import io.github.kuddev.pebrel.mobile.connection.DesktopTab
 import io.github.kuddev.pebrel.mobile.connection.DesktopReconnect
 import io.github.kuddev.pebrel.mobile.connection.SshSessionMode
+import io.github.kuddev.pebrel.mobile.connection.RemoteAttachment
 import io.github.kuddev.pebrel.mobile.session.DesktopWorkspace
 import io.github.kuddev.pebrel.mobile.session.LocalSession
 import io.github.kuddev.pebrel.mobile.session.SessionRepository
@@ -34,17 +35,20 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun LocalTerminalScreen(session: LocalSession, repository: SessionRepository, onBack: () -> Unit, onSessions: () -> Unit,
-                        onRetry: () -> Unit, onEdit: () -> Unit, onClose: () -> Unit, onFiles: (() -> Unit)? = null) {
+                        onRetry: () -> Unit, onEdit: () -> Unit, onClose: () -> Unit, onFiles: (() -> Unit)? = null,
+                        onAttachRemote: ((RemoteAttachment) -> Unit)? = null) {
     val prefs by repository.display.state.collectAsStateWithLifecycle()
     var direct by rememberSaveable(session.id, prefs.directInput) { mutableStateOf(prefs.directInput) }
     val attachments = rememberTerminalAttachmentAction(session, repository) { direct = false }
     var closing by remember { mutableStateOf(false) }
+    var remoteSessions by remember(session.id) { mutableStateOf(false) }
     var focused by rememberSaveable(session.id) { mutableStateOf(false) }
     var keyboardRequest by remember(session.id) { mutableIntStateOf(0) }
     val trust by repository.trust.collectAsStateWithLifecycle()
     if (!focused) TerminalHeader(session.title,
         if (session.source == "Local") stringResource(R.string.local_device) else session.source,
-        session.status, onBack, onSessions, { closing = true }, onFiles = onFiles)
+        session.status, onBack, onSessions, { closing = true }, onFiles = onFiles,
+        onRemoteSessions = if (onAttachRemote != null && session.host != null && session.status == "ready") ({ remoteSessions = true }) else null)
     Column(Modifier.fillMaxSize()) {
         if (session.status == "ended" || (session.status == "failed" && session.hasConnected)) TerminalDisconnected(session, if (session.host != null) onRetry else null)
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -77,10 +81,14 @@ fun LocalTerminalScreen(session: LocalSession, repository: SessionRepository, on
                     text = letter, unshifted = letter.firstOrNull()?.code ?: 0)) repository.error.value = "input_rejected"
         }, onKeyboard = { keyboardRequest++ }, focused = focused, onToggleFocus = { focused = !focused },
             onAttach = attachments.pick, attachmentBusy = attachments.busy,
-            extraShortcuts = if (session.host?.sessionMode in setOf(SshSessionMode.TMUX, SshSessionMode.HERDR)) listOf("Ctrl+B") else emptyList()) { command ->
+            extraShortcuts = if (session.attachment != null || session.host?.sessionMode in setOf(SshSessionMode.TMUX, SshSessionMode.HERDR)) listOf("Ctrl+B") else emptyList()) { command ->
             val bytes = (command + "\r").toByteArray()
             session.terminal.tryWrite(bytes, 0, bytes.size)
         }
+    }
+    if (remoteSessions) RemoteSessionSheet(session, repository, { remoteSessions = false }) {
+        remoteSessions = false
+        onAttachRemote?.invoke(it)
     }
     if (closing) AlertDialog(onDismissRequest = { closing = false }, title = { Text(stringResource(R.string.close_session)) },
         text = { Text(stringResource(R.string.close_session_confirm, session.title)) },
@@ -136,7 +144,8 @@ fun DesktopTerminalScreen(desktop: DesktopWorkspace, pane: DesktopPane, reposito
             prefs.pinchZoom, { size -> repository.display.update { it.copy(fontSize = size) } },
             Modifier.weight(1f).fillMaxWidth(), frame = if (output.target == identity) output.frame else null,
             inputTarget = input.takeIf { enabled && direct }, keyboardRequest = keyboardRequest,
-            loading = output.loading, connected = desktop.status == "ready", wrapLines = wrapLines)
+            loading = output.loading, connected = desktop.status == "ready", wrapLines = wrapLines,
+            pasteTarget = input.takeIf { enabled })
         if (output.loading && output.text.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
         CommandComposer(identity, repository, enabled, direct, {
             direct = it
@@ -197,7 +206,8 @@ private fun DesktopPaneDetails(desktop: DesktopWorkspace, pane: DesktopPane, col
 internal fun TerminalHeader(title: String, endpoint: String, status: String, onBack: () -> Unit, onSessions: () -> Unit,
                            onClose: (() -> Unit)? = null, onGit: (() -> Unit)? = null, gitEnabled: Boolean = true,
                            onDetails: (() -> Unit)? = null, onConversation: (() -> Unit)? = null, conversationActive: Boolean = false,
-                           onFiles: (() -> Unit)? = null, wrapLines: Boolean = false, onToggleWrap: (() -> Unit)? = null) {
+                           onFiles: (() -> Unit)? = null, wrapLines: Boolean = false, onToggleWrap: (() -> Unit)? = null,
+                           onRemoteSessions: (() -> Unit)? = null) {
     var menu by remember { mutableStateOf(false) }
     val connection = "$endpoint · ${statusLabel(status)}"
     Row(Modifier.fillMaxWidth().height(48.dp).background(MaterialTheme.colorScheme.background), verticalAlignment = Alignment.CenterVertically) {
@@ -218,9 +228,11 @@ internal fun TerminalHeader(title: String, endpoint: String, status: String, onB
             if (onConversation != null) TerminalHeaderAction(if (conversationActive) R.drawable.ic_terminal else R.drawable.ic_chat,
                 stringResource(if (conversationActive) R.string.chat_terminal else R.string.chat_title), onConversation)
             if (onFiles != null) TerminalHeaderAction(R.drawable.ic_git_folder, stringResource(R.string.sftp_title), onFiles, enabled = status == "ready")
-            if (onClose != null || onDetails != null || onToggleWrap != null) Box {
+            if (onClose != null || onDetails != null || onToggleWrap != null || onRemoteSessions != null) Box {
                 TerminalHeaderAction(R.drawable.ic_more, stringResource(R.string.more_actions), { menu = true })
                 DropdownMenu(menu, { menu = false }) {
+                    if (onRemoteSessions != null) DropdownMenuItem(text = { Text(stringResource(R.string.remote_sessions)) },
+                        onClick = { menu = false; onRemoteSessions() })
                     if (onToggleWrap != null) DropdownMenuItem(
                         text = { Text(stringResource(R.string.terminal_wrap_lines)) },
                         trailingIcon = { Checkbox(checked = wrapLines, onCheckedChange = null) },
