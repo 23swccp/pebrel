@@ -117,7 +117,7 @@ impl NebulaWorkspace {
             RuntimeCommand::NewWindow { .. } => {
                 dispatch.respond(Err(ApiError::new(
                     "runtime_unavailable",
-                    "the GPUI runtime currently owns one workspace window; window.create is unavailable",
+                    "window.create is handled by the process-level window dispatcher",
                 )));
             },
             RuntimeCommand::Exec { window_id, pane_id, .. }
@@ -191,7 +191,7 @@ impl NebulaWorkspace {
             },
             RuntimeCommand::NewWindow { .. } => Err(ApiError::new(
                 "runtime_unavailable",
-                "window.create is not queued in the GPUI runtime",
+                "window.create is handled by the process-level window dispatcher",
             )),
             RuntimeCommand::CloseWindow { window_id } => {
                 self.runtime_window_requested(*window_id)?;
