@@ -23,7 +23,7 @@
       "inline": "Inline",
       "popup": "List",
       "hybrid": "Hybrid",
-      "description": "Inline and List use Tab to insert a suggestion. Hybrid uses Right arrow to accept and Tab to open the list.",
+      "description": "Choose how suggestions appear and which key accepts them.",
       "details": "Inline shows a suggestion after the cursor. List shows candidates as you type; use arrow keys to select and Tab to insert. Hybrid shows an inline suggestion until Tab opens the list; then use arrow keys to select and Enter to insert. Escape closes the list. Accepting a suggestion never runs the command. Changes apply to open terminals."
     },
     "environment": {
