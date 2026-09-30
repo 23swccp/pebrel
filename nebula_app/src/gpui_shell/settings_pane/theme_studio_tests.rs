@@ -257,6 +257,30 @@ fn open_theme_editor(cx: &mut VisualTestContext) {
     assert!(cx.debug_bounds("theme-editor-dialog").is_some());
 }
 
+fn reveal_editor_control(selector: &'static str, cx: &mut VisualTestContext) {
+    let viewport = cx
+        .debug_bounds("theme-editor-fields-scroll")
+        .or_else(|| cx.debug_bounds("theme-editor-scroll"))
+        .expect("editor scroll viewport");
+    let target = cx.debug_bounds(selector).expect("editor control layout");
+    // 双栏和窄窗使用不同滚动容器；按真实布局滚动，避免点击落在固定底栏上。
+    cx.simulate_event(gpui::ScrollWheelEvent {
+        position: viewport.center(),
+        delta: gpui::ScrollDelta::Pixels(gpui::point(
+            px(0.0),
+            viewport.center().y - target.center().y,
+        )),
+        touch_phase: gpui::TouchPhase::Moved,
+        modifiers: Modifiers::default(),
+    });
+    draw(cx);
+    let target = cx.debug_bounds(selector).expect("scrolled editor control");
+    assert!(
+        target.top() >= viewport.top() && target.bottom() <= viewport.bottom(),
+        "{selector} must be reachable above the footer: {target:?}, viewport: {viewport:?}"
+    );
+}
+
 fn runtime_snapshot() -> RuntimeSnapshot {
     let runtime = RuntimeSettings::load();
     RuntimeSnapshot {
@@ -497,10 +521,19 @@ fn theme_editor_opens_from_the_picker_with_common_fields_and_collapsed_advanced(
     assert!(window.debug_bounds("theme-editor-advanced-toggle").is_some());
     assert!(window.debug_bounds("theme-editor-ansi-0").is_none());
 
-    click("theme-editor-advanced-toggle", &mut window);
-    assert!(window.debug_bounds("theme-editor-ansi-0").is_some());
-    click("theme-editor-advanced-toggle", &mut window);
-    assert!(window.debug_bounds("theme-editor-ansi-0").is_none());
+    for viewport in [size(px(1280.0), px(1000.0)), size(px(680.0), px(740.0))] {
+        window.simulate_resize(viewport);
+        draw(&mut window);
+        reveal_editor_control("theme-editor-advanced-toggle", &mut window);
+        click("theme-editor-advanced-toggle", &mut window);
+        assert!(window.debug_bounds("theme-editor-ansi-0").is_some());
+        reveal_editor_control("theme-editor-ansi-0", &mut window);
+        let save = window.debug_bounds("theme-editor-save-apply").expect("fixed save button");
+        assert!(save.bottom() <= viewport.height);
+        reveal_editor_control("theme-editor-advanced-toggle", &mut window);
+        click("theme-editor-advanced-toggle", &mut window);
+        assert!(window.debug_bounds("theme-editor-ansi-0").is_none());
+    }
 }
 
 #[gpui::test]
@@ -526,6 +559,41 @@ fn theme_editor_input_is_a_local_draft_until_apply_and_preserves_builtin_source(
     assert_eq!(runtime_snapshot(), before_runtime);
     assert_eq!(palette_snapshot(&mut window), before_palette);
     assert_eq!(settings_file_snapshot(), before_settings_file);
+}
+
+#[gpui::test]
+fn theme_editor_single_color_reset_preserves_other_colors_and_recovers_invalid_hex(
+    cx: &mut TestAppContext,
+) {
+    let _fixture_guard = lock_theme_studio();
+    let (pane, mut window) = open_settings(cx);
+    let before_runtime = runtime_snapshot();
+    let before_file = settings_file_snapshot();
+    open_theme_editor(&mut window);
+    let original = editor_draft(&pane, &mut window);
+    // 模拟带独立界面色的合法草稿，重置一个色块不能覆盖其他已编辑颜色。
+    pane.update(&mut window, |pane, cx| {
+        pane.theme_editor.as_mut().unwrap().draft.ui.warning = [17, 34, 51];
+        cx.notify();
+    });
+    draw(&mut window);
+    edit_input("theme-editor-accent", "#102030", &mut window);
+    let mut expected = editor_draft(&pane, &mut window);
+    expected.ui.accent = original.resolved_ui().accent;
+    click("theme-editor-reset-theme-editor-accent", &mut window);
+    assert_eq!(editor_draft(&pane, &mut window), expected);
+
+    edit_input("theme-editor-foreground", "invalid", &mut window);
+    assert!(
+        pane.read_with(&mut window, |pane, _| pane.theme_editor.as_ref().unwrap().error.is_some())
+    );
+    click("theme-editor-reset-theme-editor-foreground", &mut window);
+    assert!(
+        pane.read_with(&mut window, |pane, _| pane.theme_editor.as_ref().unwrap().error.is_none())
+    );
+    assert_eq!(editor_draft(&pane, &mut window), expected);
+    assert_eq!(runtime_snapshot(), before_runtime);
+    assert_eq!(settings_file_snapshot(), before_file);
 }
 
 #[gpui::test]

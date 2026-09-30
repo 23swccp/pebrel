@@ -927,14 +927,15 @@ impl SettingsPane {
                 .border_1()
                 .border_color(if focused { colors.primary } else { colors.control })
                 .child(
-                    div()
-                        .id(SharedString::from(swatch_selector.clone()))
+                    Button::new(SharedString::from(swatch_selector.clone()))
                         .debug_selector(move || swatch_selector.clone())
+                        .ghost()
                         .size(px(32.0))
                         .p(px(3.0))
                         .flex_shrink_0()
                         .rounded(px(4.0))
-                        .cursor_pointer()
+                        .tooltip(language.text(message))
+                        .disabled(save_busy)
                         .child(
                             div()
                                 .size_full()
@@ -975,7 +976,11 @@ impl SettingsPane {
                         .ghost()
                         .xsmall()
                         .tooltip(language.text(Message::ThemeEditorResetShort))
-                        .disabled(save_busy || color == reset_color)
+                        .disabled(
+                            save_busy
+                                || (color == reset_color
+                                    && !editor.invalid_inputs.contains(&slot.editor_input())),
+                        )
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.reset_theme_color_slot(slot, window, cx)
                         })),
@@ -1044,7 +1049,11 @@ impl SettingsPane {
                 ThemeColorSlot::Foreground => {
                     editor.draft.terminal.foreground = source.terminal.foreground
                 },
-                ThemeColorSlot::Accent => editor.draft.ui = source.ui,
+                ThemeColorSlot::Accent => {
+                    // 单色重置只还原强调色，保留草稿中其他界面颜色。
+                    let color = slot.read(source);
+                    slot.write(&mut editor.draft, color);
+                },
                 ThemeColorSlot::Cursor => editor.draft.terminal.cursor = source.terminal.cursor,
             }
             let color = slot.read(&editor.draft);
