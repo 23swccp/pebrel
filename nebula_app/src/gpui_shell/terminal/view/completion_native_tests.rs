@@ -193,13 +193,16 @@ fn git_completion_native_shell_end_to_end() {
         crate::gpui_shell::scientific_render::init(cx);
         let mut settings = Settings::load(nebula_settings::ThemeName::Nord);
         settings.ghost = true;
-        if demo.is_some() { settings.font_size_px = 19.0; }
+        if demo.is_some() {
+            settings.font_size_px = 18.0;
+            settings.powerline = true;
+        }
         cx.set_global(settings);
         crate::gpui_shell::theme::apply_chrome_theme(cx);
         let mut terminal = None;
         let cwd = repository.path().to_owned();
         let window = cx.open_window(WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(80.0), px(80.0)), if demo.is_some() { size(px(880.0), px(480.0)) } else { size(px(1000.0), px(600.0)) }))),
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(point(px(80.0), px(80.0)), size(px(1000.0), px(600.0))))),
             focus: false,
             ..Default::default()
         }, |window, cx| {
@@ -216,6 +219,10 @@ fn git_completion_native_shell_end_to_end() {
         cx.spawn(async move |cx| {
             let run = async {
                 if demo.is_some() {
+                    wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
+                        let term = session.term.lock();
+                        crate::display::nebula_shell_ready_from_raw_grid(&term, &view.suggest.suggest_env)
+                    })).await?;
                     std::fs::write(output.join("ready"), b"ready").map_err(|e| e.to_string())?;
                     for _ in 0..600 {
                         if output.join("record").exists() { break; }
@@ -307,7 +314,7 @@ fn git_completion_native_shell_end_to_end() {
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
                         view.on_key_down(&KeyDownEvent { keystroke: gpui::Keystroke::parse("enter").unwrap(), is_held: false, prefer_character_input: false }, window, cx);
                     })).map_err(|e| e.to_string())?;
-                    cx.background_executor().timer(Duration::from_secs(2)).await;
+                    wait_for(cx, window.into(), &terminal, |_| crate::completion::history_hint_for_test(&crate::nebula_history::HistoryScope::Local, "echo dep").is_some()).await?;
                     assert_eq!(crate::completion::history_hint_for_test(&crate::nebula_history::HistoryScope::Local, "echo dep").as_deref(), Some("loyment finished"));
                     cases = vec![(crate::display::CompletionStyle::Inline, "echo dep", "echo deployment finished", "", None, None, false)];
                 }
@@ -340,7 +347,6 @@ fn git_completion_native_shell_end_to_end() {
                     let start = std::time::Instant::now();
                     wait_for(cx, window.into(), &terminal, |view| if mode == crate::display::CompletionStyle::Popup { !view.suggest.completion_items.is_empty() } else { !view.suggest.suggestion.is_empty() }).await?;
                     let candidate_ms = start.elapsed().as_secs_f64() * 1000.0;
-                    if demo.is_some() { cx.background_executor().timer(Duration::from_secs(2)).await; }
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
                         assert_eq!(view.suggest.screen_line.trim(), prefix, "candidates must wait for the entire typed prefix");
                         if right {
@@ -351,7 +357,6 @@ fn git_completion_native_shell_end_to_end() {
                     })).map_err(|error| error.to_string())?;
                     if mode == crate::display::CompletionStyle::Hybrid && !right {
                         wait_for(cx, window.into(), &terminal, |view| !view.suggest.completion_items.is_empty()).await?;
-                        if demo.is_some() { cx.background_executor().timer(Duration::from_secs(2)).await; }
                         cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
                             assert!(view.completion_popup_geometry().is_some(), "real popup layout");
                             assert!(view.suggest.screen_line.trim() == prefix, "Tab must not write");
@@ -360,7 +365,6 @@ fn git_completion_native_shell_end_to_end() {
                     }
                     wait_for(cx, window.into(), &terminal, |view| view.suggest.screen_line.trim() == expected).await?;
                     crate::gpui_shell::try_write_stderr(format_args!("native completion accepted: {expected}"));
-                    if demo.is_some() { cx.background_executor().timer(Duration::from_secs(1)).await; }
                     let head = std::fs::read_to_string(repository.path().join(".git/HEAD")).map_err(|error| error.to_string())?;
                     if head.trim() != previous {
                         return Err("accepting completion executed the command".to_owned());
@@ -400,7 +404,13 @@ fn git_completion_native_shell_end_to_end() {
                     }
                     reports.push(serde_json::json!({"mode": format!("{mode:?}"), "input": prefix, "accepted": expected, "branch": branch, "script_marker": marker, "candidate_ms": candidate_ms, "right": right}));
                     crate::gpui_shell::try_write_stderr(format_args!("native completion executed: {expected}"));
-                    if demo.is_some() { cx.background_executor().timer(Duration::from_secs(2)).await; }
+                    if demo.is_some() {
+                        // 只等实际命令结束，不为录制安排人为停顿。
+                        wait_for(cx, window.into(), &terminal, |view| view.session.as_ref().is_some_and(|session| {
+                            let term = session.term.lock();
+                            crate::display::nebula_shell_ready_from_raw_grid(&term, &view.suggest.suggest_env)
+                        })).await?;
+                    }
                 }
                 if demo.is_some() {
                     // 录制方先关闭编码器再释放窗口，避免把窗口关闭后的桌面收进末帧。

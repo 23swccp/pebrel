@@ -209,10 +209,6 @@ pub(crate) fn completion_qa_shell(_output: &std::path::Path) -> nebula_terminal:
         );
         let mut args = integrated.args().to_vec();
         args.last_mut().unwrap().push_str("; Set-PSReadLineOption -HistorySaveStyle SaveNothing; if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) { Set-PSReadLineOption -PredictionSource None }");
-        if std::env::var_os("PEBREL_COMPLETION_DEMO").is_some() {
-            // 只换夹具提示符的外观，保留真实集成的 cwd、命令边界和历史事件。
-            args.last_mut().unwrap().push_str("; $global:NebulaPreviousPrompt = { 'PS demo> ' }; $global:NebulaUserOwnsPrompt = $true");
-        }
         nebula_terminal::tty::Shell::new(integrated.program().to_owned(), args)
     }
     #[cfg(unix)]
