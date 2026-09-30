@@ -66,6 +66,7 @@ mod encrypted_backup;
 mod event;
 mod file_uri;
 mod font_install;
+mod git_completion;
 mod git_worktree;
 #[cfg(feature = "gpui-shell")]
 mod gpui_shell;

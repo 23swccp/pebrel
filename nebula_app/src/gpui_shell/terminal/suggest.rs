@@ -121,26 +121,59 @@ pub(super) fn cache_key(state: &NebulaPaneState, line: &str, style: CompletionSt
 
 pub(super) struct Suggestion {
     pub ghost: String,
+    pub ghost_edit: Option<crate::display::NebulaCompletionItem>,
     pub items: Vec<crate::display::NebulaCompletionItem>,
     pub pending_remote_dir: Option<String>,
 }
 
 /// 只把请求所需的数据送到后台，终端网格与视图仍由前台独占。
+pub(super) struct GitRequest {
+    pub cache: Arc<crate::git_completion::Cache>,
+    pub execution: crate::runtime_exec::PaneExecContext,
+}
+
 pub(super) fn calculate(
     cwd: String,
     env: crate::display::SuggestEnv,
     line: String,
     style: CompletionStyle,
     cancellation: Cancellation,
+    git: Option<GitRequest>,
 ) -> Suggestion {
     let mut state = NebulaPaneState::default();
     state.cwd = cwd;
     state.suggest_env = env;
     if !cancellation.is_cancelled() {
-        update_with_cancel(&mut state, Some(line), true, style, &|| cancellation.is_cancelled());
+        let semantic = git.filter(|_| state.suggest_env.is_this_machine()).and_then(|git| {
+            use nebula_completions::command_context::ShellSyntax;
+            let syntax = match git.execution.shell_program() {
+                Some(program) => ShellSyntax::for_program(program),
+                None => ShellSyntax::for_program(&crate::platform::shell::default_shell_id()),
+            };
+            crate::git_completion::complete(
+                &git.cache,
+                &git.execution,
+                &state.cwd,
+                &line,
+                syntax,
+                &|| cancellation.is_cancelled(),
+            )
+        });
+        if !cancellation.is_cancelled() {
+            if let Some(candidates) = semantic {
+                crate::display::suggest_engine::apply_semantic_candidates(
+                    &mut state, &line, style, candidates,
+                );
+            } else {
+                update_with_cancel(&mut state, Some(line), true, style, &|| {
+                    cancellation.is_cancelled()
+                });
+            }
+        }
     }
     Suggestion {
         ghost: state.suggestion,
+        ghost_edit: state.suggestion_edit,
         items: state.completion_items,
         pending_remote_dir: state.pending_remote_dir,
     }

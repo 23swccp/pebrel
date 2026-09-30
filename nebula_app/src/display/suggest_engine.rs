@@ -330,6 +330,7 @@ pub(crate) fn suggest_update_with_cancel(
     }
     state.suggestion_key = key;
     state.suggestion.clear();
+    state.suggestion_edit = None;
     state.completion_items.clear();
     state.completion_selected = None;
 
@@ -553,6 +554,44 @@ fn popup_edit(line: &str, candidate: &str) -> (usize, String) {
     match candidate.strip_prefix(line) {
         Some(suffix) => (0, suffix.to_owned()),
         None => (line.chars().count(), candidate.to_owned()),
+    }
+}
+
+/// Project semantic byte spans into the terminal's end-of-line edit contract.
+pub(crate) fn apply_semantic_candidates(
+    state: &mut NebulaPaneState,
+    line: &str,
+    style: CompletionStyle,
+    candidates: Vec<nebula_completions::Suggestion>,
+) {
+    state.clear_completion_hints();
+    let items: Vec<_> = candidates
+        .into_iter()
+        .filter_map(|candidate| {
+            if candidate.span.end != line.len() {
+                return None;
+            }
+            let token = line.get(candidate.span.start..candidate.span.end)?;
+            // 只替换分歧后的尾部；已闭合引号也能接受，不删除整条命令或 UTF-8 半字符。
+            let common: usize = token
+                .chars()
+                .zip(candidate.value.chars())
+                .take_while(|(a, b)| a == b)
+                .map(|(ch, _)| ch.len_utf8())
+                .sum();
+            Some(NebulaCompletionItem {
+                label: elide_left(candidate.display_value(), 44),
+                insert: candidate.value[common..].to_owned(),
+                replace_chars: token[common..].chars().count(),
+                kind: NebulaCompletionKind::Command,
+            })
+        })
+        .collect();
+    if style == CompletionStyle::Popup {
+        state.completion_items = items;
+    } else if let Some(item) = items.into_iter().find(|item| !item.insert.is_empty()) {
+        state.suggestion = clamp_ghost(&item.insert);
+        state.suggestion_edit = Some(item);
     }
 }
 

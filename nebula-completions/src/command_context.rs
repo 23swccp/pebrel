@@ -46,6 +46,13 @@ impl GitSwitchContext {
         if cursor != line.len() || line.len() > 4096 {
             return None;
         }
+        let command = line.trim_start_matches([' ', '\t']);
+        if !["git ", "git\t", "git.exe ", "git.exe\t"]
+            .iter()
+            .any(|prefix| command.starts_with(prefix))
+        {
+            return None;
+        }
         let mut words = words(line, syntax)?;
         let target = words.pop()?;
         let mut args = words.iter();
