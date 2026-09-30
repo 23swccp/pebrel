@@ -50,6 +50,24 @@ fn git_completion_native_shell_end_to_end() {
     );
     assert!(!output.join("result.json").exists(), "use a fresh QA directory");
     let repository = crate::git_completion::tests::repository();
+    for name in
+        ["qa inline 文件.txt", "qa popup 文件.txt", "qa hybrid 文件.txt", "qa right 文件.txt"]
+    {
+        std::fs::write(repository.path().join(name), "executed").unwrap();
+    }
+    crate::git_completion::tests::git(repository.path(), &["add", "."]);
+    crate::git_completion::tests::git(
+        repository.path(),
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            "Path completion fixture",
+        ],
+    );
     for branch in
         ["qa/inline", "qa/popup", "qa/hybrid", "qa/right", "qa/subcommand", "qa/option", "qa/value"]
     {
@@ -115,7 +133,14 @@ fn git_completion_native_shell_end_to_end() {
                     (crate::display::CompletionStyle::Popup, "npm run \"qa:po\"", "npm run \"qa:popup\"", "", None, Some(".qa-popup"), false),
                     (crate::display::CompletionStyle::Hybrid, "npm run \"qa:hy", "npm run \"qa:hybrid\"", "", None, Some(".qa-hybrid"), false),
                     (crate::display::CompletionStyle::Hybrid, "npm run qa:ri", "npm run qa:right", "", None, Some(".qa-right"), true),
+                    (crate::display::CompletionStyle::Inline, "git checkout -- \"qa in", "git checkout -- \"qa inline 文件.txt\"", "", None, Some("qa inline 文件.txt"), false),
+                    (crate::display::CompletionStyle::Popup, "git checkout -- \"qa po\"", "git checkout -- \"qa popup 文件.txt\"", "", None, Some("qa popup 文件.txt"), false),
+                    (crate::display::CompletionStyle::Hybrid, "git checkout -- \"qa hy", "git checkout -- \"qa hybrid 文件.txt\"", "", None, Some("qa hybrid 文件.txt"), false),
+                    (crate::display::CompletionStyle::Hybrid, "git checkout -- \"qa ri\"", "git checkout -- \"qa right 文件.txt\"", "", None, Some("qa right 文件.txt"), true),
                 ] {
+                    if prefix.starts_with("git checkout --") {
+                        std::fs::write(repository.path().join(marker.unwrap()), "modified").map_err(|error| error.to_string())?;
+                    }
                     let launcher = format!("{} ", crate::platform::shell::completion_qa_package_manager());
                     let prefix = prefix.replacen("npm ", &launcher, 1);
                     let expected = expected.replacen("npm ", &launcher, 1);
@@ -131,6 +156,7 @@ fn git_completion_native_shell_end_to_end() {
                     wait_for(cx, window.into(), &terminal, |view| if mode == crate::display::CompletionStyle::Popup { !view.suggest.completion_items.is_empty() } else { !view.suggest.suggestion.is_empty() }).await?;
                     let candidate_ms = start.elapsed().as_secs_f64() * 1000.0;
                     cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
+                        assert_eq!(view.suggest.screen_line.trim(), prefix, "candidates must wait for the entire typed prefix");
                         if right {
                             view.on_key_down(&KeyDownEvent { keystroke: gpui::Keystroke::parse("right").unwrap(), is_held: false, prefer_character_input: false }, window, cx);
                         } else {
@@ -150,8 +176,8 @@ fn git_completion_native_shell_end_to_end() {
                     if head.trim() != format!("ref: refs/heads/{previous}") {
                         return Err("accepting completion executed the command".to_owned());
                     }
-                    if marker.is_some_and(|name| repository.path().join(name).exists()) {
-                        return Err("accepting script completion executed project code".to_owned());
+                    if marker.is_some_and(|name| std::fs::read_to_string(repository.path().join(name)).is_ok_and(|text| text == "executed")) {
+                        return Err("accepting completion executed a script or restored a file".to_owned());
                     }
                     if !suffix.is_empty() {
                         cx.update_window(window.into(), |_, window, cx| terminal.update(cx, |view, cx| {
