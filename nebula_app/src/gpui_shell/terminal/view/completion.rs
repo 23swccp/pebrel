@@ -5,6 +5,67 @@ use gpui::{AppContext as _, Context, EventEmitter as _};
 use nebula_terminal::term::TermMode;
 
 impl TerminalView {
+    pub(super) fn handle_completion_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
+        use crate::display::CompletionStyle;
+        let hybrid = self.completion_style == CompletionStyle::Hybrid;
+        if key == "escape" && hybrid && self.suggest.completion_popup_requested {
+            self.suggestion_task = None;
+            self.suggest.completion_popup_dismiss();
+            self.completion_viewport.clear();
+            return true;
+        }
+        if suggest::popup_active(&self.suggest) {
+            match key {
+                "tab" if !hybrid => {
+                    if self.suggest.completion_selected.is_none() {
+                        suggest::popup_move(&mut self.suggest, 1);
+                    }
+                    return self.accept_completion_popup(cx);
+                },
+                "tab" | "down" | "up" => {
+                    suggest::popup_move(&mut self.suggest, if key == "up" { -1 } else { 1 });
+                    let rows = self.completion_popup_geometry().map_or(8, |popup| popup.rows);
+                    self.completion_viewport.reveal(
+                        self.suggest.completion_selected,
+                        self.suggest.completion_items.len(),
+                        rows,
+                    );
+                    return true;
+                },
+                "escape" => {
+                    self.completion_viewport.clear();
+                    return suggest::popup_dismiss(&mut self.suggest);
+                },
+                "enter" | "right" => return self.accept_completion_popup(cx),
+                _ => {},
+            }
+        }
+        if key == "tab"
+            && hybrid
+            && self.ghost_enabled
+            && self.suggest_anchor.is_some()
+            && !self.suggest.screen_line.is_empty()
+        {
+            // Tab 请求只改变呈现，不向 PTY 写入；原有后台任务与过期检查继续负责候选。
+            self.suggest.request_completion_popup();
+            self.refresh_suggestion_from_snapshot(
+                Some(self.suggest.screen_line.clone()),
+                self.suggest_anchor,
+                cx,
+            );
+            return true;
+        }
+        if !self.suggest.suggestion.is_empty() && (key == "right" || key == "tab" && !hybrid) {
+            let ghost = std::mem::take(&mut self.suggest.suggestion);
+            for c in ghost.chars() {
+                crate::display::nebula_input_char(&mut self.suggest, c);
+            }
+            self.write_user_text(ghost.clone(), false, ghost.into_bytes(), cx);
+            return true;
+        }
+        false
+    }
+
     /// Enter 提交：从 grid 读回显真值（screen truth）记入共享历史，然后清
     /// 行镜像。读法与旧壳 `nebula_commit_line` 的 Windows 契约一致：无法证明
     /// 是提示符的 REPL 行或中线编辑读不到就宁缺毋滥——键击重构的
@@ -149,6 +210,7 @@ impl TerminalView {
         {
             self.suggestion_task = None;
             self.suggest_anchor = None;
+            self.suggest.completion_popup_requested = false;
             self.suggest.clear_completion_hints();
             self.completion_viewport.clear();
             return;
@@ -157,13 +219,16 @@ impl TerminalView {
             self.suggestion_task = None;
             self.suggest_anchor = None;
             self.suggest.screen_line.clear();
+            self.suggest.completion_popup_requested = false;
             self.suggest.clear_completion_hints();
             self.completion_viewport.clear();
             return;
         };
         self.suggest_anchor = anchor;
         self.suggest.screen_line = line.clone();
-        let key = suggest::cache_key(&self.suggest, &line, self.completion_style);
+        let mode = self.completion_style;
+        let style = mode.active_style(self.suggest.completion_popup_requested);
+        let key = suggest::cache_key(&self.suggest, &line, style);
         if self.suggest.completion_query_matches(&key) {
             return;
         }
@@ -176,7 +241,6 @@ impl TerminalView {
         self.suggest.completion_suppressed_line = None;
         let cwd = self.suggest.cwd.clone();
         let env = self.suggest.suggest_env.clone();
-        let style = self.completion_style;
         let request_cwd = cwd.clone();
         let request_env = env.clone();
         // 本地目录也可能位于慢盘/网络挂载；扫描和历史首次加载都不能进入绘制回调。
@@ -190,7 +254,8 @@ impl TerminalView {
                 if !view.suggest.completion_query_matches(&key)
                     || view.suggest.cwd != cwd
                     || view.suggest.suggest_env != env
-                    || view.completion_style != style
+                    || view.completion_style != mode
+                    || mode.active_style(view.suggest.completion_popup_requested) != style
                     || !view.ghost_enabled
                     || view.exited.is_some()
                 {
@@ -198,6 +263,11 @@ impl TerminalView {
                 }
                 view.suggest.suggestion = result.ghost;
                 view.suggest.completion_items = result.items;
+                if view.suggest.completion_popup_requested
+                    && !view.suggest.completion_items.is_empty()
+                {
+                    view.suggest.completion_selected = Some(0);
+                }
                 view.suggest.pending_remote_dir = result.pending_remote_dir;
                 view.completion_viewport
                     .update_query(&view.suggest.screen_line, view.suggest.completion_items.len());

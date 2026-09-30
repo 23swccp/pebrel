@@ -17,6 +17,15 @@
     "en_us": "English"
   },
   "settings": {
+    "completion": {
+      "mode": "Completion mode",
+      "cycle": "Cycle completion mode",
+      "inline": "Inline",
+      "popup": "List",
+      "hybrid": "Hybrid",
+      "description": "Choose how suggestions appear and which key accepts them.",
+      "details": "Inline: Tab accepts the suggestion after the cursor. List: candidates appear as you type; use arrow keys to select and Tab to insert. Hybrid: Right arrow accepts the inline suggestion; Tab opens the list, arrow keys select and Enter inserts. Escape closes the list. Accepting a suggestion never runs the command. Changes apply to open terminals."
+    },
     "environment": {
       "refresh": "Refresh system environment for new terminals",
       "refresh_description": "Read current Windows environment settings when opening a terminal. Turn off to inherit the environment used to launch Pebrel, including temporary PATH entries. Open terminals are unchanged."

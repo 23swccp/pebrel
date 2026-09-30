@@ -98,7 +98,6 @@ fn issue_353_initial_directory_reaches_completion_and_tab_writes_the_suffix(
             view.suggest.suggest_env = crate::display::SuggestEnv::Local;
             view.ghost_enabled = true;
             view.completion_style = crate::display::CompletionStyle::Inline;
-            view.accept = crate::display::AcceptKey::Both;
             feed(view, "❯ cat issue353-f".as_bytes());
             refresh_completion_from_grid(view, cx);
         });
@@ -141,6 +140,139 @@ fn issue_353_history_uses_echoed_command_and_refreshes_on_all_platforms(cx: &mut
 }
 
 #[gpui::test]
+fn completion_mode_hybrid_lists_without_writing_and_cancels_pending_results(
+    cx: &mut TestAppContext,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(directory.path().join("mode-candidate.txt"), b"").unwrap();
+    let (view, window, receiver) = open_at(cx, Some(directory.path().to_path_buf()));
+    view.update(window, |view, cx| {
+        view.suggest.suggest_env = crate::display::SuggestEnv::Local;
+        view.ghost_enabled = true;
+        view.completion_style = crate::display::CompletionStyle::Hybrid;
+        feed(view, "❯ cat mode-c".as_bytes());
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    view.update(window, |view, cx| {
+        assert_eq!(view.suggest.suggestion, "andidate.txt");
+        assert!(view.suggest.completion_items.is_empty());
+        assert!(view.handle_completion_key("tab", cx));
+        assert!(view.suggest.completion_popup_requested);
+        assert!(view.handle_completion_key("escape", cx));
+    });
+    window.run_until_parked();
+    view.update(window, |view, cx| {
+        assert!(view.suggest.completion_items.is_empty(), "Esc cancels pending list results");
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    window.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            assert_eq!(view.suggest.suggestion, "andidate.txt");
+            view.on_terminal_tab(&TerminalTab, window, cx);
+        });
+    });
+    window.run_until_parked();
+    assert!(
+        receiver.try_iter().all(|message| !matches!(message, Msg::Input(_))),
+        "Tab only opens the list"
+    );
+    view.update(window, |view, cx| {
+        assert_eq!(view.suggest.completion_items[0].insert, "andidate.txt");
+        assert_eq!(view.suggest.completion_selected, Some(0));
+        crate::display::nebula_input_char(&mut view.suggest, 'a');
+        feed(view, b"a");
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    view.update(window, |view, cx| {
+        assert!(view.suggest.completion_popup_requested, "typing keeps the requested list open");
+        assert_eq!(view.suggest.completion_items[0].insert, "ndidate.txt");
+        assert!(view.handle_completion_key("enter", cx));
+        assert!(!view.suggest.completion_popup_requested);
+    });
+    let input: Vec<u8> = receiver
+        .try_iter()
+        .filter_map(|message| match message {
+            Msg::Input(bytes) => Some(bytes.into_owned()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(input, b"ndidate.txt", "acceptance must not execute a command");
+}
+
+#[gpui::test]
+fn completion_mode_switch_invalidates_a_pending_list_and_right_accepts_inline(
+    cx: &mut TestAppContext,
+) {
+    let (view, window, receiver) = open(cx);
+    view.update(window, |view, cx| {
+        view.ghost_enabled = true;
+        view.completion_style = crate::display::CompletionStyle::Hybrid;
+        view.refresh_suggestion_from_snapshot(Some("systemc".into()), Some((0, 7)), cx);
+        view.handle_completion_key("tab", cx);
+        cx.global_mut::<Settings>().completion_style = crate::display::CompletionStyle::Inline;
+        cx.global_mut::<Settings>().ghost = true;
+        view.apply_settings(cx);
+    });
+    window.run_until_parked();
+    view.update(window, |view, cx| {
+        assert!(!view.suggest.completion_popup_requested);
+        assert!(view.suggest.completion_items.is_empty());
+        cx.global_mut::<Settings>().completion_style = crate::display::CompletionStyle::Hybrid;
+        view.apply_settings(cx);
+        view.refresh_suggestion_from_snapshot(Some("systemc".into()), Some((0, 7)), cx);
+    });
+    window.run_until_parked();
+    view.update(window, |view, cx| assert!(view.handle_completion_key("right", cx)));
+    let input: Vec<u8> = receiver
+        .try_iter()
+        .filter_map(|message| match message {
+            Msg::Input(bytes) => Some(bytes.into_owned()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(input, b"tl");
+}
+
+#[gpui::test]
+fn completion_mode_list_tab_accepts_first_candidate_and_ime_keeps_the_key(cx: &mut TestAppContext) {
+    let (view, window, receiver) = open(cx);
+    view.update(window, |view, cx| {
+        view.ghost_enabled = true;
+        view.completion_style = crate::display::CompletionStyle::Popup;
+        feed(view, "❯ systemc".as_bytes());
+        refresh_completion_from_grid(view, cx);
+    });
+    window.run_until_parked();
+    window.update(|window, cx| {
+        view.update(cx, |view, cx| {
+            assert_eq!(view.suggest.completion_selected, None);
+            assert_eq!(view.suggest.completion_items[0].insert, "tl");
+            view.marked_text = Some("输入法".into());
+            view.on_terminal_tab(&TerminalTab, window, cx);
+            assert!(receiver.try_iter().all(|message| !matches!(message, Msg::Input(_))));
+            assert_eq!(view.suggest.completion_selected, None);
+            view.marked_text = None;
+            view.on_terminal_tab(&TerminalTab, window, cx);
+            assert!(view.suggest.completion_items.is_empty());
+        });
+    });
+    let input: Vec<u8> = receiver
+        .try_iter()
+        .filter_map(|message| match message {
+            Msg::Input(bytes) => Some(bytes.into_owned()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(input, b"tl", "the first Tab inserts without navigation or command execution");
+}
+
+#[gpui::test]
 fn issue_358_history_popup_matches_a_command_prefix_without_a_trailing_space(
     cx: &mut TestAppContext,
 ) {
@@ -167,11 +299,19 @@ fn issue_358_history_popup_matches_a_command_prefix_without_a_trailing_space(
             let candidates: Vec<_> =
                 view.suggest.completion_items.iter().map(|item| item.insert.as_str()).collect();
             assert_eq!(candidates, [";notepad", ";calc"]);
-            view.on_terminal_tab(&TerminalTab, window, cx);
+            view.on_key_down(
+                &KeyDownEvent {
+                    keystroke: gpui::Keystroke::parse("down").unwrap(),
+                    is_held: false,
+                    prefer_character_input: false,
+                },
+                window,
+                cx,
+            );
             assert_eq!(view.suggest.completion_selected, Some(0));
             view.on_key_down(
                 &KeyDownEvent {
-                    keystroke: gpui::Keystroke::parse("enter").unwrap(),
+                    keystroke: gpui::Keystroke::parse("tab").unwrap(),
                     is_held: false,
                     prefer_character_input: false,
                 },
@@ -197,6 +337,7 @@ fn native_shell_suggestion_and_zellij_alternate_screen_keep_their_input(cx: &mut
     window.update(|window, cx| {
         view.update(cx, |view, cx| {
             view.ghost_enabled = true;
+            view.completion_style = crate::display::CompletionStyle::Hybrid;
             // Shell 自己绘制的灰字在光标后，不能被当成已经接受的输入。
             feed(view, "❯ echo native_hint\x1b[11D".as_bytes());
             refresh_completion_from_grid(view, cx);

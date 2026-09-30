@@ -97,9 +97,10 @@ pub(super) fn localized_select_labels(
             "Tab",
             language.pick("Tab 或右方向键", "Tab or Right arrow"),
         ],
-        "completion_style" => {
-            vec![language.pick("行内灰字", "Inline ghost"), language.pick("弹窗列表", "Popup list")]
-        },
+        "completion_style" => nebula_settings::CompletionStyleName::ALL
+            .into_iter()
+            .map(|style| language.completion_style_label(style))
+            .collect(),
         "background_image_fit" => vec![
             language.pick("拉伸", "Fill"),
             language.pick("适应", "Uniform"),

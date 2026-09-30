@@ -409,6 +409,7 @@ fn localized_select_labels_keep_stable_value_cardinality() {
         ("tabs_position", &["sidebar", "top"]),
         ("bell", &["off", "visual", "sound", "both"]),
         ("notification_duration", nebula_settings::NotificationDuration::VALUES),
+        ("completion_style", &nebula_settings::CompletionStyleName::VALUES),
     ];
     for (key, values) in cases {
         for language in crate::display::UiLanguage::ALL {
