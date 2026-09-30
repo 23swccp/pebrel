@@ -762,13 +762,42 @@ struct S3Backend {
 }
 
 impl S3Backend {
+    /// OSS's S3 endpoint requires the bucket in the host, including when the
+    /// user has already supplied a bucket-qualified endpoint. Other providers
+    /// keep path-style addressing for MinIO/R2 and custom gateways.
+    fn request_endpoint(&self) -> String {
+        let Some((uri, service)) = self.oss_service() else {
+            return self.endpoint.clone();
+        };
+        let port = uri.port_u16().map(|port| format!(":{port}")).unwrap_or_default();
+        format!("{}://{}.{service}{port}", uri.scheme_str().unwrap_or("https"), self.bucket)
+    }
+
+    fn oss_service(&self) -> Option<(ureq::http::Uri, String)> {
+        let uri: ureq::http::Uri = self.endpoint.parse().ok()?;
+        if !matches!(uri.path(), "" | "/") || uri.query().is_some() {
+            return None;
+        }
+        let host = uri.host()?.to_ascii_lowercase();
+        let bucket_prefix = format!("{}.", self.bucket);
+        let service = host.strip_prefix(&bucket_prefix).unwrap_or(&host);
+        let region = service.strip_prefix("s3.oss-")?.strip_suffix(".aliyuncs.com")?;
+        if region.is_empty()
+            || !region.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            return None;
+        }
+        let service = service.to_owned();
+        Some((uri, service))
+    }
+
     fn host(&self) -> String {
-        let after_scheme =
-            self.endpoint.split_once("://").map(|(_, rest)| rest).unwrap_or(&self.endpoint);
+        let endpoint = self.request_endpoint();
+        let after_scheme = endpoint.split_once("://").map(|(_, rest)| rest).unwrap_or(&endpoint);
         let host = after_scheme.split('/').next().unwrap_or(after_scheme);
         // 默认端口按惯例省略；显式写默认端口会让签名的 host 与 ureq 实际
         // 发送的 Host 头不一致，SignatureDoesNotMatch 且极难排查。
-        let default_port = if self.endpoint.starts_with("http://") { ":80" } else { ":443" };
+        let default_port = if endpoint.starts_with("http://") { ":80" } else { ":443" };
         host.strip_suffix(default_port).unwrap_or(host).to_owned()
     }
 
@@ -776,9 +805,12 @@ impl S3Backend {
         if self.prefix.is_empty() { name.to_owned() } else { format!("{}/{name}", self.prefix) }
     }
 
-    /// 路径式 object 路径：`/bucket/key`（对 MinIO/R2/自建最不挑剔）。
+    fn bucket_path(&self) -> String {
+        if self.oss_service().is_some() { "/".to_owned() } else { format!("/{}/", self.bucket) }
+    }
+
     fn object_path(&self, name: &str) -> String {
-        format!("/{}/{}", self.bucket, self.key(name))
+        format!("{}{}", self.bucket_path(), self.key(name))
     }
 
     fn request(
@@ -789,6 +821,22 @@ impl S3Backend {
         body: &[u8],
     ) -> Result<(u16, Vec<u8>), String> {
         let amz_date = sigv4_timestamp(now_unix());
+        let request = self.signed_request(method, path, query, body, &amz_date)?;
+        let mut response = http_agent().run(request).map_err(|err| format!("连接失败：{err}"))?;
+        let status = response.status().as_u16();
+        let bytes =
+            response.body_mut().read_to_vec().map_err(|err| format!("读取响应失败：{err}"))?;
+        Ok((status, bytes))
+    }
+
+    fn signed_request(
+        &self,
+        method: &str,
+        path: &str,
+        query: &[(&str, &str)],
+        body: &[u8],
+        amz_date: &str,
+    ) -> Result<ureq::http::Request<Vec<u8>>, String> {
         let payload_hash = sha256_hex(body);
         let authorization = sigv4_authorization(
             method,
@@ -796,30 +844,26 @@ impl S3Backend {
             path,
             query,
             &payload_hash,
-            &amz_date,
+            amz_date,
             &self.region,
             &self.access_key,
             &self.secret_key,
         );
         let canonical_query = sigv4_canonical_query(query);
+        let endpoint = self.request_endpoint();
         let url = if canonical_query.is_empty() {
-            format!("{}{}", self.endpoint, sigv4_encode_path(path))
+            format!("{endpoint}{}", sigv4_encode_path(path))
         } else {
-            format!("{}{}?{canonical_query}", self.endpoint, sigv4_encode_path(path))
+            format!("{endpoint}{}?{canonical_query}", sigv4_encode_path(path))
         };
-        let request = ureq::http::Request::builder()
+        ureq::http::Request::builder()
             .method(method)
             .uri(&url)
             .header("Authorization", authorization)
-            .header("x-amz-date", &amz_date)
+            .header("x-amz-date", amz_date)
             .header("x-amz-content-sha256", &payload_hash)
             .body(body.to_vec())
-            .map_err(|err| format!("构造 S3 请求失败：{err}"))?;
-        let mut response = http_agent().run(request).map_err(|err| format!("连接失败：{err}"))?;
-        let status = response.status().as_u16();
-        let bytes =
-            response.body_mut().read_to_vec().map_err(|err| format!("读取响应失败：{err}"))?;
-        Ok((status, bytes))
+            .map_err(|err| format!("构造 S3 请求失败：{err}"))
     }
 
     fn explain(status: u16, body: &[u8]) -> String {
@@ -856,7 +900,7 @@ impl Backend for S3Backend {
     }
 
     fn list_details(&self) -> Result<Vec<Snapshot>, String> {
-        let path = format!("/{}/", self.bucket);
+        let path = self.bucket_path();
         let prefix = self.key(ARCHIVE_PREFIX);
         let (status, body) =
             self.request("GET", &path, &[("list-type", "2"), ("prefix", &prefix)], &[])?;
@@ -1283,6 +1327,94 @@ mod tests {
         assert_eq!(backend.object_path("a.nbk"), "/nebula/backups/a.nbk");
         let default_port = S3Backend { endpoint: "https://s3.example.com:443".into(), ..backend };
         assert_eq!(default_port.host(), "s3.example.com");
+    }
+
+    fn oss_backend(endpoint: &str) -> S3Backend {
+        S3Backend {
+            endpoint: endpoint.into(),
+            region: "cn-beijing".into(),
+            bucket: "pebrel-backups".into(),
+            prefix: "backups".into(),
+            access_key: "ak".into(),
+            secret_key: "sk".into(),
+        }
+    }
+
+    #[test]
+    fn oss_uses_virtual_host_for_listing_and_all_object_operations() {
+        for endpoint in [
+            "https://s3.oss-cn-beijing.aliyuncs.com",
+            "https://pebrel-backups.s3.oss-cn-beijing.aliyuncs.com",
+        ] {
+            let backend = oss_backend(endpoint);
+            assert_eq!(backend.host(), "pebrel-backups.s3.oss-cn-beijing.aliyuncs.com");
+            assert_eq!(backend.bucket_path(), "/");
+            assert_eq!(backend.object_path("a b.nbk"), "/backups/a b.nbk");
+            for method in ["PUT", "GET", "DELETE"] {
+                let request = backend
+                    .signed_request(
+                        method,
+                        &backend.object_path("a b.nbk"),
+                        &[],
+                        b"archive",
+                        "20260930T000000Z",
+                    )
+                    .unwrap();
+                assert_eq!(request.method().as_str(), method);
+                assert_eq!(
+                    request.uri().to_string(),
+                    "https://pebrel-backups.s3.oss-cn-beijing.aliyuncs.com/backups/a%20b.nbk"
+                );
+                assert_eq!(request.body(), b"archive");
+            }
+        }
+    }
+
+    #[test]
+    fn oss_listing_signature_matches_the_transmitted_host_path_and_query() {
+        let backend = oss_backend("https://s3.oss-cn-beijing.aliyuncs.com:443");
+        let request = backend
+            .signed_request(
+                "GET",
+                &backend.bucket_path(),
+                &[("prefix", "backups/pebrel-backup-"), ("list-type", "2")],
+                &[],
+                "20260930T000000Z",
+            )
+            .unwrap();
+        assert_eq!(backend.host(), "pebrel-backups.s3.oss-cn-beijing.aliyuncs.com");
+        assert_eq!(request.uri().path(), "/");
+        assert_eq!(request.uri().query(), Some("list-type=2&prefix=backups%2Fpebrel-backup-"));
+        // Independently computed with Python hashlib/hmac from the HTTP fields.
+        assert_eq!(
+            request.headers()["Authorization"].to_str().unwrap(),
+            concat!(
+                "AWS4-HMAC-SHA256 Credential=ak/20260930/cn-beijing/s3/aws4_request, ",
+                "SignedHeaders=host;x-amz-content-sha256;x-amz-date, ",
+                "Signature=a5dfeb539efd551afe1f1b7aed85c2727c83a74897dbb43a547450f7d2dc91e2"
+            )
+        );
+    }
+
+    #[test]
+    fn non_oss_endpoints_keep_path_style_and_oss_preserves_custom_ports() {
+        for endpoint in [
+            "https://s3.us-east-1.amazonaws.com",
+            "https://account.r2.cloudflarestorage.com",
+            "http://127.0.0.1:9000",
+            "https://minio.lan:9000",
+            "https://s3.oss-cn-beijing.aliyuncs.com.example.org",
+            "https://s3.oss-cn-beijing.example.aliyuncs.com",
+        ] {
+            let backend = oss_backend(endpoint);
+            assert_eq!(backend.request_endpoint(), endpoint);
+            assert_eq!(backend.bucket_path(), "/pebrel-backups/");
+            assert_eq!(backend.object_path("a.nbk"), "/pebrel-backups/backups/a.nbk");
+        }
+        let mut backend = oss_backend("http://s3.oss-cn-beijing.aliyuncs.com:8080");
+        backend.prefix.clear();
+        assert_eq!(backend.host(), "pebrel-backups.s3.oss-cn-beijing.aliyuncs.com:8080");
+        assert_eq!(backend.object_path("a.nbk"), "/a.nbk");
     }
 
     /// 内存后端专测 prune 的排序与保留语义。
