@@ -163,6 +163,17 @@ pub(crate) fn registered_wsl_distros(cancelled: &dyn Fn() -> bool) -> Vec<String
     if cancelled() { Vec::new() } else { names }
 }
 
+/// Produce UTF-8 evidence with the native QA shell on each host.
+#[cfg(test)]
+pub(crate) fn completion_qa_redirect(suffix: &str) -> String {
+    // PowerShell 5 的默认重定向为 UTF-16；验收产物使用显式 UTF-8。
+    if cfg!(windows) {
+        suffix.replace(" > ", " | Out-File -Encoding utf8 ")
+    } else {
+        suffix.to_owned()
+    }
+}
+
 /// Keep the isolated Include fixture acceptable to native OpenSSH permission checks.
 #[cfg(test)]
 pub(crate) fn completion_qa_ssh_config_permissions(path: &std::path::Path) {
@@ -223,6 +234,42 @@ pub(crate) fn completion_qa_shell(_output: &std::path::Path) -> nebula_terminal:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires a registered, runnable WSL distribution"]
+    fn common_completion_reads_and_executes_the_real_wsl_path() {
+        use crate::completion::{Cancellation, Session};
+        use crate::display::{CompletionStyle, SuggestEnv};
+        let distro = crate::platform::shell::registered_wsl_distros(&|| false)
+            .into_iter()
+            .find(|name| !name.starts_with("docker-desktop"))
+            .expect("registered WSL distro");
+        let env = SuggestEnv::Wsl { distro: distro.clone() };
+        let entries = crate::remote_dirs::fetch_wsl(&distro, "/etc").expect("guest directory");
+        assert!(entries.iter().any(|entry| entry.name == "os-release"));
+        crate::remote_dirs::finish_fetch(&env, "/etc", Some(entries));
+        for style in [CompletionStyle::Inline, CompletionStyle::Popup, CompletionStyle::Hybrid] {
+            let result = Session::default()
+                .request("/".into(), env.clone(), "cat /etc/os-re".into(), style, None)
+                .calculate(&Cancellation::default());
+            let edit = if style == CompletionStyle::Popup {
+                &result.completion_items[0]
+            } else {
+                result.suggestion_edit.as_ref().unwrap()
+            };
+            assert_eq!(edit.insert, "lease");
+        }
+        let mut command =
+            std::process::Command::new(crate::platform::shell::wsl_executable().unwrap());
+        crate::platform::process::hidden_command(&mut command);
+        let output = command
+            .args(["-d", &distro, "--exec", "/bin/cat", "/etc/os-release"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(String::from_utf8(output.stdout).unwrap().contains("NAME="));
+    }
 
     #[cfg(all(not(windows), feature = "gpui-shell"))]
     #[test]

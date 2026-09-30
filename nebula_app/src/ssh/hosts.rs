@@ -130,7 +130,8 @@ impl Scan<'_> {
                     if pattern.matches_with(
                         &entry.file_name().to_string_lossy(),
                         glob::MatchOptions {
-                            case_sensitive: !cfg!(windows),
+                            case_sensitive: crate::platform::local_paths::completion_case_sensitive(
+                            ),
                             require_literal_separator: true,
                             require_literal_leading_dot: true,
                         },

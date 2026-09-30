@@ -344,40 +344,6 @@ mod tests {
         assert!(result.completion_items.is_empty(), "stale local labels must not read host paths");
     }
 
-    #[cfg(windows)]
-    #[test]
-    #[ignore = "requires a registered, runnable WSL distribution"]
-    fn common_completion_reads_and_executes_the_real_wsl_path() {
-        let distro = crate::platform::shell::registered_wsl_distros(&|| false)
-            .into_iter()
-            .find(|name| !name.starts_with("docker-desktop"))
-            .expect("registered WSL distro");
-        let env = SuggestEnv::Wsl { distro: distro.clone() };
-        let entries = crate::remote_dirs::fetch_wsl(&distro, "/etc").expect("guest directory");
-        assert!(entries.iter().any(|entry| entry.name == "os-release"));
-        crate::remote_dirs::finish_fetch(&env, "/etc", Some(entries));
-        for style in [CompletionStyle::Inline, CompletionStyle::Popup, CompletionStyle::Hybrid] {
-            let result = Session::default()
-                .request("/".into(), env.clone(), "cat /etc/os-re".into(), style, None)
-                .calculate(&Cancellation::default());
-            let edit = if style == CompletionStyle::Popup {
-                &result.completion_items[0]
-            } else {
-                result.suggestion_edit.as_ref().unwrap()
-            };
-            assert_eq!(edit.insert, "lease");
-        }
-        let mut command =
-            std::process::Command::new(crate::platform::shell::wsl_executable().unwrap());
-        crate::platform::process::hidden_command(&mut command);
-        let output = command
-            .args(["-d", &distro, "--exec", "/bin/cat", "/etc/os-release"])
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        assert!(String::from_utf8(output.stdout).unwrap().contains("NAME="));
-    }
-
     #[test]
     fn path_completion_preserves_quotes_utf8_types_and_directory_roles_in_all_modes() {
         use crate::display::NebulaCompletionKind;

@@ -2,9 +2,23 @@
 
 use super::*;
 use gpui::{EntityInputHandler as _, WindowBounds, WindowOptions, size};
+use gpui_component::ActiveTheme as _;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
+
+struct CompletionSurface(gpui::Entity<TerminalView>);
+
+impl gpui::Render for CompletionSurface {
+    fn render(
+        &mut self,
+        _: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        // 终端视图由正式卡片容器提供底色；独立验收窗口也必须补齐这个组合职责。
+        gpui::div().size_full().bg(cx.theme().background).child(self.0.clone())
+    }
+}
 
 async fn wait_for(
     cx: &mut gpui::AsyncApp,
@@ -190,7 +204,8 @@ fn git_completion_native_shell_end_to_end() {
             }, window, cx));
             window.focus(&view.read(cx).focus_handle.clone(), cx);
             terminal = Some(view.clone());
-            cx.new(|cx| gpui_component::Root::new(view, window, cx))
+            let surface = cx.new(|_| CompletionSurface(view));
+            cx.new(|cx| gpui_component::Root::new(surface, window, cx))
         }).unwrap();
         let terminal = terminal.unwrap();
         cx.spawn(async move |cx| {
@@ -279,8 +294,8 @@ fn git_completion_native_shell_end_to_end() {
                 for (mode, prefix, expected, suffix, branch, marker, right) in cases {
                     crate::gpui_shell::try_write_stderr(format_args!("native completion case: {mode:?} {prefix}"));
                     // Windows PowerShell 默认重定向为 UTF-16；证据文件统一显式 UTF-8。
-                    let suffix = if cfg!(windows) && (prefix.starts_with("ssh ") || prefix.starts_with("wsl ")) {
-                        suffix.replace(" > ", " | Out-File -Encoding utf8 ")
+                    let suffix = if prefix.starts_with("ssh ") || prefix.starts_with("wsl ") {
+                        crate::platform::shell::completion_qa_redirect(suffix)
                     } else { suffix.to_owned() };
                     if prefix.starts_with("git checkout --") {
                         std::fs::write(repository.path().join(marker.unwrap()), "modified").map_err(|error| error.to_string())?;
