@@ -44,6 +44,10 @@ busy branch-switch targets without excluding valid start-point references.
 Keep the existing output bound, cancellation, two-second cache and invalidation
 generation. Parse metadata without allocating a temporary vector per row. No
 network request, shell completion invocation, package or polling worker is added.
+Disable lazy fetching and set an empty `GIT_ALLOW_PROTOCOL` allowlist in the query
+process. The latter also blocks transport access on older Git versions that do
+not understand `GIT_NO_LAZY_FETCH`; incomplete local object data can fail the query
+without contacting a promisor remote.
 
 ## Rejected alternatives
 

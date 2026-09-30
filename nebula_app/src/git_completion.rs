@@ -86,7 +86,9 @@ pub(crate) fn complete(
             command
                 .env("GIT_OPTIONAL_LOCKS", "0")
                 .env("GIT_TERMINAL_PROMPT", "0")
-                .env("GIT_NO_LAZY_FETCH", "1");
+                .env("GIT_NO_LAZY_FETCH", "1")
+                // 较旧 Git 不认识 NO_LAZY_FETCH；空协议白名单也禁止按需拉取访问远端。
+                .env("GIT_ALLOW_PROTOCOL", "");
             let bytes = crate::platform::process_output::read_cancellable(
                 command,
                 // CI 的真实 Windows 查询曾超过 750 ms；后台清理上限不能当作按键延迟预算。
