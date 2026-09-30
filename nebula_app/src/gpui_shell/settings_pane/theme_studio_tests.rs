@@ -1032,6 +1032,10 @@ fn theme_picker_foreground_swatches_are_local_until_apply(cx: &mut TestAppContex
     let before_runtime = runtime_snapshot();
     let before_palette = palette_snapshot(&mut window);
     click("open-theme-picker", &mut window);
+    let customize = window.debug_bounds("customize-theme").expect("custom theme entry");
+    let apply = window.debug_bounds("apply-appearance-picker").expect("apply entry");
+    assert!(customize.right() < apply.left(), "custom theme stays at the footer's left edge");
+    assert!((customize.bottom() - apply.bottom()).abs() < px(12.0));
 
     for index in 0..3 {
         let selector = match index {
@@ -1040,6 +1044,8 @@ fn theme_picker_foreground_swatches_are_local_until_apply(cx: &mut TestAppContex
             _ => "theme-foreground-swatch-2",
         };
         click(selector, &mut window);
+        let hit = window.debug_bounds(selector).expect("foreground color hit area");
+        assert_eq!(hit.size, size(px(32.0), px(32.0)));
         assert!(pane.read_with(&mut window, |pane, _| {
             pane.appearance_picker.as_ref().is_some_and(|picker| picker.draft.is_theme())
         }));
@@ -1065,6 +1071,84 @@ fn theme_picker_foreground_swatches_are_local_until_apply(cx: &mut TestAppContex
     click("confirm-dialog-ok", &mut window);
     assert_eq!(runtime_snapshot(), before_runtime);
     assert_eq!(palette_snapshot(&mut window), before_palette);
+}
+
+/// 仅按需显示真实 GPUI 控件；使用独立配置目录，不启动 PTY 或修改用户配置。
+#[test]
+#[ignore = "manual theme visual review; requires isolated PEBREL_CONFIG_DIR and PEBREL_THEME_QA_DIR"]
+fn native_theme_picker_visual_review() {
+    use std::{path::PathBuf, time::Duration};
+    let config = PathBuf::from(std::env::var_os("PEBREL_CONFIG_DIR").expect("isolated config"));
+    let output = PathBuf::from(std::env::var_os("PEBREL_THEME_QA_DIR").expect("QA output"));
+    let mode = std::env::var("PEBREL_THEME_QA_MODE").unwrap_or_else(|_| "cards".into());
+    assert!(config.is_absolute() && output.is_absolute());
+    assert!(!config.join("pebrel_settings.txt").exists(), "use a fresh isolated config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::create_dir_all(&output).unwrap();
+    std::fs::write(
+        config.join("pebrel_settings.txt"),
+        "theme=Nord\nfollow_system_theme=0\nlanguage=zh-CN\nfont_size=14\n",
+    )
+    .unwrap();
+    gpui_platform::application().with_assets(crate::gpui_shell::NebulaAssets).run(move |cx| {
+        crate::gpui_shell::init(cx, None);
+        let mut pane = None;
+        let handle = cx
+            .open_window(
+                gpui::WindowOptions {
+                    window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::new(
+                        gpui::point(px(30.0), px(20.0)),
+                        size(px(1100.0), px(690.0)),
+                    ))),
+                    focus: false,
+                    show: true,
+                    ..Default::default()
+                },
+                |window, cx| {
+                    let settings = cx.new(|cx| SettingsPane::new(window, cx));
+                    settings.update(cx, |settings, cx| {
+                        settings.active_section = 1;
+                        if mode != "appearance" {
+                            settings.open_appearance_picker(true, window, cx);
+                        }
+                    });
+                    pane = Some(settings.clone());
+                    let host = cx.new(|_| ThemeStudioHost { pane: settings });
+                    cx.new(|cx| Root::new(host, window, cx))
+                },
+            )
+            .unwrap();
+        let pane = pane.unwrap();
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(Duration::from_millis(800)).await;
+            cx.update_window(handle.into(), |_, window, cx| {
+                pane.update(cx, |pane, cx| match mode.as_str() {
+                    "palette" => pane.open_theme_foreground_picker(window, cx),
+                    "editor" => pane.open_theme_editor(window, cx),
+                    _ => {},
+                });
+                window.refresh();
+            })
+            .unwrap();
+            cx.background_executor().timer(Duration::from_millis(800)).await;
+            std::fs::write(
+                output.join("ready.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "pid": std::process::id(), "mode": mode,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            for _ in 0..240 {
+                if output.join("capture-complete").exists() {
+                    break;
+                }
+                cx.background_executor().timer(Duration::from_millis(500)).await;
+            }
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+    });
 }
 
 #[gpui::test]
