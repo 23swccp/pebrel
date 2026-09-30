@@ -14,6 +14,7 @@ struct Branch {
     busy: bool,
 }
 
+#[derive(Debug)]
 struct Snapshot {
     key: String,
     branches: Arc<[Branch]>,
@@ -21,7 +22,7 @@ struct Snapshot {
 }
 
 /// Each pane owns one repository snapshot; prefixes reuse it without another Git process.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Cache(Mutex<(u64, Option<Snapshot>)>);
 
 impl Cache {
@@ -76,10 +77,17 @@ pub(crate) fn complete(
             command.env("GIT_OPTIONAL_LOCKS", "0").env("GIT_TERMINAL_PROMPT", "0");
             let bytes = crate::platform::process_output::read_cancellable(
                 command,
-                Duration::from_millis(750),
+                // CI 的真实 Windows 查询曾超过 750 ms；后台清理上限不能当作按键延迟预算。
+                // 输入变化仍由取消信号终止旧进程，正常查询完成后立即返回。
+                Duration::from_secs(3),
                 1024 * 1024,
                 cancelled,
             )
+            .inspect_err(|error| {
+                log::debug!("Local Git completion query failed: {error}");
+                #[cfg(test)]
+                eprintln!("Local Git completion query failed: {error}");
+            })
             .ok()?;
             let text = std::str::from_utf8(&bytes).ok()?;
             let branches: Arc<[Branch]> = text

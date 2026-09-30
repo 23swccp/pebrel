@@ -100,3 +100,6 @@ the first semantic source. Existing history and remote-path ownership is unchang
 A second semantic command requires shared syntax structure, a verified remote
 execution channel is added, or measured request cost justifies different cache
 invalidation or task admission.
+
+The child deadline is superseded by
+`2026-09-30-background-query-deadline.md`; other source semantics remain in force.

@@ -43,7 +43,7 @@ impl Cancellation {
 }
 
 /// 来源缓存跟随 pane，具体来源及其适用条件不再由界面决定。
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Session {
     git: Arc<crate::git_completion::Cache>,
 }
