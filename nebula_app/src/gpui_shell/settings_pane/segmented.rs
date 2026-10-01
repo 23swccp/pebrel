@@ -5,8 +5,8 @@ use gpui::{Animation, AnimationExt as _, ElementId, FontWeight, Pixels, RenderOn
 use gpui_component::button::ButtonCustomVariant;
 use std::{cell::Cell, rc::Rc};
 
-const TRACK_INSET: f32 = 3.0;
-const SLIDE_DURATION: Duration = Duration::from_millis(180);
+const TRACK_INSET: f32 = 2.0;
+const SLIDE_DURATION: Duration = Duration::from_millis(280);
 
 /// Keep the last displayed position, so a second click starts where the thumb is.
 struct IndicatorMotion {
@@ -21,6 +21,7 @@ struct SettingsSegments {
     key: &'static str,
     selected: usize,
     height: Pixels,
+    width: Pixels,
     buttons: Vec<Button>,
 }
 
@@ -91,7 +92,7 @@ impl RenderOnce for SettingsSegments {
         div()
             .id(SharedString::from(format!("settings-choices-{key}")))
             .debug_selector(move || format!("settings-choices-{key}"))
-            .w(px(SETTINGS_SELECT_WIDTH) + px(TRACK_INSET * 2.0))
+            .w(self.width + px(TRACK_INSET * 2.0))
             .max_w_full()
             .border_1()
             .border_color(cx.theme().border)
@@ -127,12 +128,43 @@ impl SettingsPane {
         let selected = state.read(cx).selected_index(cx).map(|index| index.row).unwrap_or(0);
         let labels =
             localized_select_labels(key, values, crate::gpui_shell::config::ui_language(cx));
-        let height = settings_control_height(cx);
+        let height = (cx.theme().font_size * 2.0).max(px(28.0));
+        let font_size = cx.theme().font_size * (13.0 / 14.0);
+        let mut font = gpui::font(cx.theme().font_family.clone());
+        font.weight = FontWeight::MEDIUM;
+        let text_system = cx.text_system();
+        let slot_width = labels
+            .iter()
+            .map(|label| {
+                text_system
+                    .shape_line(
+                        SharedString::from(label.clone()),
+                        font_size,
+                        &[gpui::TextRun {
+                            len: label.len(),
+                            font: font.clone(),
+                            color: cx.theme().foreground,
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        }],
+                        None,
+                    )
+                    .width
+                    + px(24.0)
+            })
+            .fold(px(64.0), |width, next| width.max(next));
+        let width = slot_width * labels.len() as f32;
+        // Longer translations retain the full dropdown instead of clipping text.
+        if width + px(TRACK_INSET * 2.0) > px(SETTINGS_SELECT_WIDTH) {
+            return None;
+        }
         Some(
             SettingsSegments {
                 key,
                 selected,
                 height,
+                width,
                 buttons: values
                     .iter()
                     .copied()
@@ -144,7 +176,9 @@ impl SettingsPane {
                             .debug_selector(move || format!("settings-choice-{key}-{value}"))
                             .flex_1()
                             .min_w_0()
+                            .with_size(gpui_component::Size::Size(font_size / 0.875))
                             .h(height)
+                            .px(px(12.0))
                             .rounded(height / 2.0)
                             .custom(
                                 ButtonCustomVariant::new(cx)

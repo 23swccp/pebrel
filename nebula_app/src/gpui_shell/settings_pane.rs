@@ -686,8 +686,13 @@ impl SettingsPane {
             div()
                 .debug_selector(move || format!("settings-select-{key}"))
                 .w(px(SETTINGS_SELECT_WIDTH))
-                .text_color(cx.theme().link)
-                .children(select.map(|state| Select::new(&state).h(settings_control_height(cx))))
+                .text_color(cx.theme().foreground)
+                .children(select.map(|state| {
+                    Select::new(&state)
+                        .h(settings_control_height(cx))
+                        .bg(cx.theme().transparent)
+                        .rounded(px(6.0))
+                }))
                 .into_any_element()
         });
         self.maybe_marked(key, label, desc, control, cx)
@@ -701,8 +706,13 @@ impl SettingsPane {
             div()
                 .w(px(SETTINGS_SELECT_WIDTH))
                 .font_family(cx.theme().mono_font_family.clone())
-                .text_color(cx.theme().link)
-                .child(Select::new(&self.shell_select).h(settings_control_height(cx))),
+                .text_color(cx.theme().foreground)
+                .child(
+                    Select::new(&self.shell_select)
+                        .h(settings_control_height(cx))
+                        .bg(cx.theme().transparent)
+                        .rounded(px(6.0)),
+                ),
             cx,
         )
     }
