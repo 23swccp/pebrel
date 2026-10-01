@@ -4,6 +4,39 @@ Every release entry is provided in English and Simplified Chinese.
 
 每个版本条目均同时提供英文和简体中文说明。
 
+## 2.1.1 - 2026-10-01
+
+### English
+
+#### Fixed
+
+- Fixed SSH host form choices on Android not aligning to the right edge. Terminal mode, authentication method, and group selectors now share the form's trailing alignment while labels remain on the left.
+- Fixed settings segmented selectors losing their capsule shape. The rounded track and selected option retain the current control height and text spacing, without internal divider lines.
+- Fixed terminal inline formulas such as `$0$`, `$E$`, and polynomial expressions remaining as source text or consuming neighboring formulas. Mathematical line breaks in dollar-delimited formulas are recognized within bounded scans, while shell variables and ordinary prose remain literal. Addresses [#420](https://github.com/Kuddev/pebrel/issues/420).
+
+### 中文
+
+#### 修复
+
+- 修复：Android SSH 主机表单的选项组未靠右对齐的问题，终端模式、认证方式和分组选择器统一对齐表单右侧，标签保持在左侧。
+- 修复：设置页分段选择器丢失胶囊外观的问题，恢复圆润轨道和胶囊选中态，保留当前控件高度与文字留白，移除内部直线分隔。
+- 修复：终端内 `$0$`、`$E$` 和多项式等行内公式保留为源码或吞并相邻公式的问题。在有界扫描内识别美元定界符中的数学折行，同时保留 Shell 变量及普通正文。对应 [#420](https://github.com/Kuddev/pebrel/issues/420)。
+
+---
+
+**SHA256**
+
+- `Pebrel-v2.1.1-linux-x64-preview.AppImage`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-linux-x64-preview.deb`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-linux-x64-preview.tar.gz`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-macos-arm64-preview.dmg`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-macos-x64-preview.dmg`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-windows-x64.zip`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-windows-x64-setup.exe`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-windows-arm64.zip`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-windows-arm64-setup.exe`: `PENDING FINAL BUILD`
+- `Pebrel-v2.1.1-android-universal-preview.apk`: `PENDING FINAL BUILD`
+
 ## 2.1.0 - 2026-09-30
 
 ### English
