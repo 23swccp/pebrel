@@ -76,10 +76,6 @@ impl ThemeName {
     }
 }
 
-const fn rgb(value: u32) -> Rgb8 {
-    [(value >> 16) as u8, (value >> 8) as u8, value as u8]
-}
-
 /// Exact semantic colors of the reviewed terminal HTML. These values are static;
 /// color adapters must not desaturate accents or synthesize a second selected ramp.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -219,37 +215,37 @@ impl ThemeName {
             // Snow Storm / Polar Night from nordtheme/nord; accent and ANSI
             // inks are darkened for light surfaces, not an official Nord port.
             Self::NordLight => ReviewedPalette {
-                shell: rgb(0xe5e9f0),
-                background: rgb(0xeceff4),
-                foreground: rgb(0x2e3440),
-                muted: rgb(0x596579),
-                accent: rgb(0x4c6a87),
+                shell: [0xe5, 0xe9, 0xf0],
+                background: [0xec, 0xef, 0xf4],
+                foreground: [0x2e, 0x34, 0x40],
+                muted: [0x59, 0x65, 0x79],
+                accent: [0x4c, 0x6a, 0x87],
                 selected: [0xd8, 0xde, 0xe9, 255],
                 line: [0xcc, 0xd3, 0xdf, 255],
-                red: rgb(0xa3434c),
-                green: rgb(0x506b3e),
-                yellow: rgb(0x826323),
-                blue: rgb(0x4c6a87),
-                purple: rgb(0x805578),
-                cyan: rgb(0x376d76),
-                frame: rgb(0x9ca9bb),
+                red: [0xa3, 0x43, 0x4c],
+                green: [0x50, 0x6b, 0x3e],
+                yellow: [0x82, 0x63, 0x23],
+                blue: [0x4c, 0x6a, 0x87],
+                purple: [0x80, 0x55, 0x78],
+                cyan: [0x37, 0x6d, 0x76],
+                frame: [0x9c, 0xa9, 0xbb],
             },
             // Warm Sand: user-supplied palette; Paper is the compatibility identity.
             Self::Paper => ReviewedPalette {
-                shell: rgb(0xf5f4f2),
-                background: rgb(0xfdfdfc),
-                foreground: rgb(0x2f2e2b),
-                muted: rgb(0x736e68),
-                accent: rgb(0xd97706),
+                shell: [0xf5, 0xf4, 0xf2],
+                background: [0xfd, 0xfd, 0xfc],
+                foreground: [0x2f, 0x2e, 0x2b],
+                muted: [0x73, 0x6e, 0x68],
+                accent: [0xd9, 0x77, 0x06],
                 selected: [0xd9, 0x77, 0x06, 26],
                 line: [0xeb, 0xe9, 0xe6, 255],
-                red: rgb(0xa34740),
-                green: rgb(0x576d46),
-                yellow: rgb(0x896327),
-                blue: rgb(0x506d80),
-                purple: rgb(0x805e78),
-                cyan: rgb(0x426f6a),
-                frame: rgb(0xa8a29e),
+                red: [0xa3, 0x47, 0x40],
+                green: [0x57, 0x6d, 0x46],
+                yellow: [0x89, 0x63, 0x27],
+                blue: [0x50, 0x6d, 0x80],
+                purple: [0x80, 0x5e, 0x78],
+                cyan: [0x42, 0x6f, 0x6a],
+                frame: [0xa8, 0xa2, 0x9e],
             },
             Self::LimestoneLight => ReviewedPalette {
                 shell: [0xf0, 0xef, 0xeb],
@@ -352,20 +348,20 @@ impl ThemeName {
             // Slate Light: user-supplied cool-gray palette. The Rust identity
             // stays GlassLight so existing saved preferences remain readable.
             Self::GlassLight => ReviewedPalette {
-                shell: rgb(0xf8fafc),
-                background: rgb(0xffffff),
-                foreground: rgb(0x0f172a),
-                muted: rgb(0x475569),
-                accent: rgb(0x6366f1),
+                shell: [0xf8, 0xfa, 0xfc],
+                background: [0xff, 0xff, 0xff],
+                foreground: [0x0f, 0x17, 0x2a],
+                muted: [0x47, 0x55, 0x69],
+                accent: [0x63, 0x66, 0xf1],
                 selected: [0x63, 0x66, 0xf1, 26],
                 line: [0xe2, 0xe8, 0xf0, 255],
-                red: rgb(0xb91c1c),
-                green: rgb(0x15803d),
-                yellow: rgb(0x92600a),
-                blue: rgb(0x4f46e5),
-                purple: rgb(0x7e22ce),
-                cyan: rgb(0x0e7490),
-                frame: rgb(0x94a3b8),
+                red: [0xb9, 0x1c, 0x1c],
+                green: [0x15, 0x80, 0x3d],
+                yellow: [0x92, 0x60, 0x0a],
+                blue: [0x4f, 0x46, 0xe5],
+                purple: [0x7e, 0x22, 0xce],
+                cyan: [0x0e, 0x74, 0x90],
+                frame: [0x94, 0xa3, 0xb8],
             },
             Self::GlassDark => ReviewedPalette {
                 shell: [0x44, 0x44, 0x45],
