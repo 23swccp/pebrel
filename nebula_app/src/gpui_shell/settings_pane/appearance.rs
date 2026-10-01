@@ -288,7 +288,13 @@ mod tests {
             cx.update(|window, cx| {
                 let _ = window.draw(cx);
             });
-            let bounds = cx.debug_bounds(&format!("{key}-edit")).unwrap();
+            let bounds = cx
+                .debug_bounds(if key == "font_size" {
+                    "font_size-edit"
+                } else {
+                    "ui_font_size-edit"
+                })
+                .unwrap();
             cx.simulate_click(bounds.center(), gpui::Modifiers::default());
             cx.run_until_parked();
             assert!(pane.read_with(cx, |pane, _| pane.font_size_editing.is_some()));

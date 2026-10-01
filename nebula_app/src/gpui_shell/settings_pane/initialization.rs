@@ -561,8 +561,8 @@ impl SettingsPane {
                 }
             },
         ));
-        subscriptions.push(cx.intercept_keystrokes(cx.listener(
-            |this, event: &gpui::KeystrokeEvent, window, cx| {
+        let font_size_interceptor =
+            cx.listener(|this, event: &gpui::KeystrokeEvent, window, cx| {
                 if this.font_size_editing.is_some()
                     && this.font_size_input.read(cx).focus_handle(cx).is_focused(window)
                     && event.keystroke.key == "escape"
@@ -570,8 +570,8 @@ impl SettingsPane {
                     cx.stop_propagation();
                     this.finish_font_size_edit(false, window, cx);
                 }
-            },
-        )));
+            });
+        subscriptions.push(cx.intercept_keystrokes(font_size_interceptor));
 
         Self {
             focus_handle: cx.focus_handle(),
