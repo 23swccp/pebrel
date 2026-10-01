@@ -96,7 +96,8 @@ fn rapid_retarget_keeps_the_visible_thumb_position(cx: &mut gpui::TestAppContext
                 key: "probe",
                 selected: self.selected,
                 height: px(28.0),
-                width: px(192.0),
+                labels: vec!["A".into(), "B".into(), "C".into()],
+                fallback: None,
                 buttons: (0usize..3).map(|ix| Button::new(ix).flex_1().h(px(28.0))).collect(),
             }
             .render(window, cx)

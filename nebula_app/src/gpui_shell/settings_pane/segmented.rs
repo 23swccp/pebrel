@@ -21,12 +21,46 @@ struct SettingsSegments {
     key: &'static str,
     selected: usize,
     height: Pixels,
-    width: Pixels,
+    labels: Vec<SharedString>,
+    fallback: Option<gpui::AnyElement>,
     buttons: Vec<Button>,
 }
 
 impl RenderOnce for SettingsSegments {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let font_size = cx.theme().font_size * 0.875;
+        let mut font = gpui::font(cx.theme().font_family.clone());
+        font.weight = FontWeight::MEDIUM;
+        let text_system = window.text_system();
+        let slot_width = self
+            .labels
+            .iter()
+            .map(|label| {
+                text_system
+                    .shape_line(
+                        SharedString::from(label.clone()),
+                        font_size,
+                        &[gpui::TextRun {
+                            len: label.len(),
+                            font: font.clone(),
+                            color: cx.theme().foreground,
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        }],
+                        None,
+                    )
+                    .width
+                    + px(24.0)
+            })
+            .fold(px(64.0), |width, next| width.max(next));
+        let width = slot_width * self.labels.len() as f32;
+        // Longer translations retain the full dropdown instead of clipping text.
+        if width + px(TRACK_INSET * 2.0) > px(SETTINGS_SELECT_WIDTH) {
+            if let Some(fallback) = self.fallback {
+                return fallback;
+            }
+        }
         let key = self.key;
         let count = self.buttons.len() as f32;
         let target = self.selected as f32 / count;
@@ -92,7 +126,7 @@ impl RenderOnce for SettingsSegments {
         div()
             .id(SharedString::from(format!("settings-choices-{key}")))
             .debug_selector(move || format!("settings-choices-{key}"))
-            .w(self.width + px(TRACK_INSET * 2.0))
+            .w(width + px(TRACK_INSET * 2.0))
             .max_w_full()
             .border_1()
             .border_color(cx.theme().border)
@@ -102,6 +136,7 @@ impl RenderOnce for SettingsSegments {
             .child(
                 h_flex().relative().w_full().h(self.height).child(indicator).children(self.buttons),
             )
+            .into_any_element()
     }
 }
 
@@ -129,43 +164,19 @@ impl SettingsPane {
         let labels =
             localized_select_labels(key, values, crate::gpui_shell::config::ui_language(cx));
         let height = (cx.theme().font_size * 2.0).max(px(28.0));
-        // Match Button::small: its inner label uses 0.875 rem.
-        let font_size = cx.theme().font_size * 0.875;
-        let mut font = gpui::font(cx.theme().font_family.clone());
-        font.weight = FontWeight::MEDIUM;
-        let text_system = cx.text_system();
-        let slot_width = labels
-            .iter()
-            .map(|label| {
-                text_system
-                    .shape_line(
-                        SharedString::from(label.clone()),
-                        font_size,
-                        &[gpui::TextRun {
-                            len: label.len(),
-                            font: font.clone(),
-                            color: cx.theme().foreground,
-                            background_color: None,
-                            underline: None,
-                            strikethrough: None,
-                        }],
-                        None,
-                    )
-                    .width
-                    + px(24.0)
-            })
-            .fold(px(64.0), |width, next| width.max(next));
-        let width = slot_width * labels.len() as f32;
-        // Longer translations retain the full dropdown instead of clipping text.
-        if width + px(TRACK_INSET * 2.0) > px(SETTINGS_SELECT_WIDTH) {
-            return None;
-        }
         Some(
             SettingsSegments {
                 key,
                 selected,
                 height,
-                width,
+                labels: labels.clone(),
+                fallback: Some(
+                    Select::new(state)
+                        .h(settings_control_height(cx))
+                        .bg(cx.theme().transparent)
+                        .rounded(px(6.0))
+                        .into_any_element(),
+                ),
                 buttons: values
                     .iter()
                     .copied()

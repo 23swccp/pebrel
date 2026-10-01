@@ -5,8 +5,7 @@ use std::{cell::Cell, rc::Rc, time::Duration};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Animation, AnimationExt as _, App, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement as _, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Window, div, px,
+    ParentElement as _, RenderOnce, SharedString, Styled as _, Window, div, px,
 };
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_component::{ActiveTheme as _, Disableable as _};
