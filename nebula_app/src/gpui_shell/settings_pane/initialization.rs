@@ -565,10 +565,23 @@ impl SettingsPane {
             cx.listener(|this, event: &gpui::KeystrokeEvent, window, cx| {
                 if this.font_size_editing.is_some()
                     && this.font_size_input.read(cx).focus_handle(cx).is_focused(window)
-                    && event.keystroke.key == "escape"
                 {
-                    cx.stop_propagation();
-                    this.finish_font_size_edit(false, window, cx);
+                    match event.keystroke.key.as_str() {
+                        "escape" => {
+                            cx.stop_propagation();
+                            this.finish_font_size_edit(false, window, cx);
+                        },
+                        "tab" => {
+                            cx.stop_propagation();
+                            if event.keystroke.modifiers.shift {
+                                window.focus_prev(cx);
+                            } else {
+                                window.focus_next(cx);
+                            }
+                            this.finish_font_size_edit(true, window, cx);
+                        },
+                        _ => {},
+                    }
                 }
             });
         subscriptions.push(cx.intercept_keystrokes(font_size_interceptor));

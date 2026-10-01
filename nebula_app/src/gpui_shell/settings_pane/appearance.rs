@@ -284,6 +284,8 @@ mod tests {
             ("font_size", "999", "enter", 96.0),
             ("font_size", "-5", "enter", 4.0),
             ("ui_font_size", "17", "tab", 17.0),
+            ("ui_font_size", "18", "shift-tab", 18.0),
+            ("ui_font_size", "16", "blur", 16.0),
         ] {
             cx.update(|window, cx| {
                 let _ = window.draw(cx);
@@ -298,11 +300,31 @@ mod tests {
             cx.simulate_click(bounds.center(), gpui::Modifiers::default());
             cx.run_until_parked();
             assert!(pane.read_with(cx, |pane, _| pane.font_size_editing.is_some()));
+            cx.update(|window, cx| {
+                assert!(
+                    pane.read(cx).font_size_input.read(cx).focus_handle(cx).is_focused(window),
+                    "{key}: input must receive focus after clicking its value"
+                );
+            });
             cx.simulate_input(text);
-            cx.simulate_keystrokes(action);
+            assert_eq!(
+                pane.read_with(cx, |pane, cx| pane.font_size_input.read(cx).value().to_string()),
+                text,
+                "{key}: typing must replace the selected current value"
+            );
+            if action == "blur" {
+                cx.update(|window, cx| {
+                    pane.read(cx).settings_search_input.read(cx).focus_handle(cx).focus(window, cx);
+                });
+            } else {
+                cx.simulate_keystrokes(action);
+            }
             cx.run_until_parked();
             pane.read_with(cx, |pane, cx| {
-                assert!(pane.font_size_editing.is_none());
+                assert!(
+                    pane.font_size_editing.is_none(),
+                    "{key}: {text} via {action} must finish editing"
+                );
                 let actual = if key == "font_size" {
                     pane.terminal_font_size_px(cx)
                 } else {
