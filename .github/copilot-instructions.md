@@ -14,6 +14,13 @@ scan unrelated Issues, request reviews, approve/merge PRs, or publish releases.
 - When information or platform access is missing, state precisely what is missing.
   Do not invent results, infer a UI result from compilation, or call a theoretical
   edge case a confirmed defect.
+- For an unclear report, reply to the reporter on the assigned Issue with concise
+  questions about the missing reproduction details. Ask only for information that
+  blocks testing: a minimal input/command and steps, relevant version/platform or
+  settings, and sanitized logs. Use the reporter's language and do not request
+  information already present in the report.
+- If the current code already fixes the bug or existing tests cover it, report
+  the verified results instead of adding duplicate tests.
 
 ## Deliver focused test evidence
 
