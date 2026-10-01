@@ -212,7 +212,7 @@ class GhosttyEngineTest {
 
     @Test fun localPromptTracksDirectoriesAndRespectsUserMkshrc() {
         val target = InstrumentationRegistry.getInstrumentation().targetContext
-        val directory = java.io.File(target.cacheDir, "prompt-${System.nanoTime()}").apply { mkdirs() }
+        val directory = java.io.File(target.cacheDir, "prompt-${System.nanoTime()}").apply { mkdirs() }.canonicalFile
         val nested = java.io.File(directory, "中文 path").apply { mkdirs() }
         fun checkPrompt(custom: Boolean) {
             if (custom) java.io.File(directory, ".mkshrc").writeText("PS1='custom:${'$'}{PWD} > '\n", Charsets.UTF_8)
