@@ -77,6 +77,8 @@ fn capsule_uses_inset_thumb_full_hit_targets_and_keyboard_selection(cx: &mut gpu
         let _ = window.draw(cx);
     });
     window.simulate_keystrokes("tab tab tab enter");
+    // GPUI activates buttons on release; simulate_keystrokes sends only key-down.
+    window.simulate_event(gpui::KeyUpEvent { keystroke: gpui::Keystroke::parse("enter").unwrap() });
     window.run_until_parked();
     assert_eq!(RuntimeSettings::load().vcs_display.settings_value(), "svn");
 }
