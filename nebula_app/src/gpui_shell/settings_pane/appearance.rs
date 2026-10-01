@@ -291,13 +291,28 @@ mod tests {
             cx.update(|window, cx| {
                 let _ = window.draw(cx);
             });
-            let bounds = cx
-                .debug_bounds(if key == "font_size" {
-                    "font_size-edit"
-                } else {
-                    "ui_font_size-edit"
-                })
-                .unwrap();
+            let selector = if key == "font_size" { "font_size-edit" } else { "ui_font_size-edit" };
+            let bounds = cx.debug_bounds(selector).unwrap();
+            // Increasing the interface size can move this row below the fold.
+            // Reveal it with the same wheel path a user takes before clicking.
+            cx.simulate_event(gpui::ScrollWheelEvent {
+                position: gpui::point(bounds.center().x, px(900.0)),
+                delta: gpui::ScrollDelta::Pixels(gpui::point(
+                    px(0.0),
+                    px(900.0) - bounds.center().y,
+                )),
+                touch_phase: gpui::TouchPhase::Moved,
+                modifiers: gpui::Modifiers::default(),
+            });
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+            let bounds = cx.debug_bounds(selector).unwrap();
+            assert!(
+                bounds.top() >= px(0.0) && bounds.bottom() <= px(1800.0),
+                "{key}: the clicked size must be inside the viewport: {bounds:?}"
+            );
             cx.simulate_click(bounds.center(), gpui::Modifiers::default());
             cx.run_until_parked();
             assert!(
