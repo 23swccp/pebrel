@@ -76,6 +76,10 @@ impl ThemeName {
     }
 }
 
+const fn rgb(value: u32) -> Rgb8 {
+    [(value >> 16) as u8, (value >> 8) as u8, value as u8]
+}
+
 /// Exact semantic colors of the reviewed terminal HTML. These values are static;
 /// color adapters must not desaturate accents or synthesize a second selected ramp.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
