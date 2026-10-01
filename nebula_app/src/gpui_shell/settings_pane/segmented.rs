@@ -153,7 +153,11 @@ impl SettingsPane {
                                     } else {
                                         cx.theme().muted_foreground
                                     })
-                                    .hover(cx.theme().foreground.opacity(0.04))
+                                    .hover(if active {
+                                        cx.theme().transparent
+                                    } else {
+                                        cx.theme().foreground.opacity(0.04)
+                                    })
                                     .active(cx.theme().foreground.opacity(0.08)),
                             )
                             .font_weight(if active {
