@@ -33,11 +33,15 @@ fn capsule_uses_inset_thumb_full_hit_targets_and_keyboard_selection(cx: &mut gpu
     });
     let pane = pane.unwrap();
     window.simulate_resize(gpui::size(px(500.0), px(200.0)));
-    for value in ["auto", "svn", "git"] {
+    for (value, selector) in [
+        ("auto", "settings-choice-vcs_display-auto"),
+        ("svn", "settings-choice-vcs_display-svn"),
+        ("git", "settings-choice-vcs_display-git"),
+    ] {
         window.update(|window, cx| {
             let _ = window.draw(cx);
         });
-        let slot = window.debug_bounds(&format!("settings-choice-vcs_display-{value}")).unwrap();
+        let slot = window.debug_bounds(selector).unwrap();
         // Click the blank edge of the real button, not just its centered label.
         window.simulate_click(
             gpui::point(slot.right() - px(5.0), slot.center().y),
