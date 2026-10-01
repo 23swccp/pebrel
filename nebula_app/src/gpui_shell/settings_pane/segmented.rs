@@ -1,6 +1,92 @@
 //! Short fixed choices stay visible and share the existing preference authority.
 
 use super::*;
+use gpui::{Animation, AnimationExt as _, ElementId, FontWeight, Pixels, RenderOnce, relative};
+use gpui_component::button::ButtonCustomVariant;
+use std::{cell::Cell, rc::Rc};
+
+const TRACK_INSET: f32 = 3.0;
+const SLIDE_DURATION: Duration = Duration::from_millis(180);
+
+/// Keep the last displayed position, so a second click starts where the thumb is.
+struct IndicatorMotion {
+    position: Rc<Cell<f32>>,
+    from: f32,
+    target: f32,
+    epoch: u64,
+}
+
+#[derive(IntoElement)]
+struct SettingsSegments {
+    key: &'static str,
+    selected: usize,
+    height: Pixels,
+    buttons: Vec<Button>,
+}
+
+impl RenderOnce for SettingsSegments {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let key = self.key;
+        let count = self.buttons.len() as f32;
+        let target = self.selected as f32 / count;
+        let motion = window.use_keyed_state(
+            SharedString::from(format!("settings-indicator-motion-{key}")),
+            cx,
+            |_, _| IndicatorMotion {
+                position: Rc::new(Cell::new(target)),
+                from: target,
+                target,
+                epoch: 0,
+            },
+        );
+        let (from, epoch, position) = motion.update(cx, |motion, _| {
+            if motion.target != target {
+                motion.from = motion.position.get();
+                motion.target = target;
+                motion.epoch += 1;
+            }
+            (motion.from, motion.epoch, motion.position.clone())
+        });
+        let indicator = div()
+            .id(SharedString::from(format!("settings-indicator-{key}")))
+            .debug_selector(move || format!("settings-indicator-{key}"))
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .left(relative(target))
+            .w(relative(1.0 / count))
+            .rounded(self.height / 2.0)
+            .bg(cx.theme().primary);
+        let indicator = if from == target {
+            indicator.into_any_element()
+        } else {
+            indicator
+                .with_animation(
+                    ElementId::NamedInteger(format!("settings-slide-{key}").into(), epoch),
+                    Animation::new(SLIDE_DURATION).with_easing(|progress| {
+                        crate::motion::Easing::CssStandard.sample(progress)
+                    }),
+                    move |indicator, progress| {
+                        let current = from + (target - from) * progress;
+                        position.set(current);
+                        indicator.left(relative(current))
+                    },
+                )
+                .into_any_element()
+        };
+        div()
+            .id(SharedString::from(format!("settings-choices-{key}")))
+            .debug_selector(move || format!("settings-choices-{key}"))
+            .w(px(SETTINGS_SELECT_WIDTH) + px(TRACK_INSET * 2.0))
+            .max_w_full()
+            .p(px(TRACK_INSET))
+            .rounded(self.height / 2.0 + px(TRACK_INSET))
+            .bg(cx.theme().secondary)
+            .child(
+                h_flex().relative().w_full().h(self.height).child(indicator).children(self.buttons),
+            )
+    }
+}
 
 impl SettingsPane {
     pub(super) fn segmented_setting(
@@ -26,28 +112,44 @@ impl SettingsPane {
         let labels =
             localized_select_labels(key, values, crate::gpui_shell::config::ui_language(cx));
         let height = settings_control_height(cx);
-        let inset = px(2.0);
-        // ButtonGroup 会切平内部圆角并拼接描边；独立按钮保留每一档的胶囊选中态。
         Some(
-            h_flex()
-                .id(SharedString::from(format!("settings-choices-{key}")))
-                .debug_selector(move || format!("settings-choices-{key}"))
-                .w(px(SETTINGS_SELECT_WIDTH) + inset * 2.0)
-                .max_w_full()
-                .p(inset)
-                .rounded(height / 2.0 + inset)
-                .bg(cx.theme().secondary)
-                .children(values.iter().copied().zip(labels).enumerate().map(
-                    |(index, (value, label))| {
+            SettingsSegments {
+                key,
+                selected,
+                height,
+                buttons: values
+                    .iter()
+                    .copied()
+                    .zip(labels)
+                    .enumerate()
+                    .map(|(index, (value, label))| {
+                        let active = index == selected;
                         Button::new(SharedString::from(format!("settings-choice-{key}-{value}")))
                             .debug_selector(move || format!("settings-choice-{key}-{value}"))
                             .flex_1()
                             .min_w_0()
                             .h(height)
                             .rounded(height / 2.0)
-                            .ghost()
-                            .selected(index == selected)
-                            .toggled(index == selected)
+                            .custom(
+                                ButtonCustomVariant::new(cx)
+                                    .foreground(if active {
+                                        cx.theme().primary_foreground
+                                    } else {
+                                        cx.theme().foreground
+                                    })
+                                    .hover(if active {
+                                        cx.theme().primary_foreground.opacity(0.10)
+                                    } else {
+                                        cx.theme().secondary_hover
+                                    })
+                                    .active(cx.theme().foreground.opacity(0.12)),
+                            )
+                            .font_weight(if active {
+                                FontWeight::SEMIBOLD
+                            } else {
+                                FontWeight::NORMAL
+                            })
+                            .toggled(active)
                             .label(label)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 match this.try_persist(&[(key, value.to_owned())], cx) {
@@ -60,9 +162,13 @@ impl SettingsPane {
                                     ),
                                 }
                             }))
-                    },
-                ))
-                .into_any_element(),
+                    })
+                    .collect(),
+            }
+            .into_any_element(),
         )
     }
 }
+
+#[cfg(all(test, feature = "gpui-test-support"))]
+mod tests;
