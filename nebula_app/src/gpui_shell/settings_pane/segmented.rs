@@ -25,37 +25,44 @@ impl SettingsPane {
         let selected = state.read(cx).selected_index(cx).map(|index| index.row).unwrap_or(0);
         let labels =
             localized_select_labels(key, values, crate::gpui_shell::config::ui_language(cx));
+        let height = settings_control_height(cx);
+        let inset = px(2.0);
+        // ButtonGroup 会切平内部圆角并拼接描边；独立按钮保留每一档的胶囊选中态。
         Some(
-            gpui_component::button::ButtonGroup::new(SharedString::from(format!(
-                "settings-choices-{key}"
-            )))
-            .w(px(SETTINGS_SELECT_WIDTH))
-            .max_w_full()
-            .outline()
-            .children(values.iter().copied().zip(labels).enumerate().map(
-                |(index, (value, label))| {
-                    Button::new(SharedString::from(format!("settings-choice-{key}-{value}")))
-                        .debug_selector(move || format!("settings-choice-{key}-{value}"))
-                        .flex_1()
-                        .min_w_0()
-                        .h(settings_control_height(cx))
-                        .rounded(px(6.0))
-                        .selected(index == selected)
-                        .label(label)
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            match this.try_persist(&[(key, value.to_owned())], cx) {
-                                Ok(()) => this.sync_select(key, value, window, cx),
-                                Err(error) => crate::gpui_shell::toast::toast(
-                                    window,
-                                    cx,
-                                    crate::display::ToastKind::Warning,
-                                    error.to_string(),
-                                ),
-                            }
-                        }))
-                },
-            ))
-            .into_any_element(),
+            h_flex()
+                .id(SharedString::from(format!("settings-choices-{key}")))
+                .debug_selector(move || format!("settings-choices-{key}"))
+                .w(px(SETTINGS_SELECT_WIDTH) + inset * 2.0)
+                .max_w_full()
+                .p(inset)
+                .rounded(height / 2.0 + inset)
+                .bg(cx.theme().secondary)
+                .children(values.iter().copied().zip(labels).enumerate().map(
+                    |(index, (value, label))| {
+                        Button::new(SharedString::from(format!("settings-choice-{key}-{value}")))
+                            .debug_selector(move || format!("settings-choice-{key}-{value}"))
+                            .flex_1()
+                            .min_w_0()
+                            .h(height)
+                            .rounded(height / 2.0)
+                            .ghost()
+                            .selected(index == selected)
+                            .toggled(index == selected)
+                            .label(label)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                match this.try_persist(&[(key, value.to_owned())], cx) {
+                                    Ok(()) => this.sync_select(key, value, window, cx),
+                                    Err(error) => crate::gpui_shell::toast::toast(
+                                        window,
+                                        cx,
+                                        crate::display::ToastKind::Warning,
+                                        error.to_string(),
+                                    ),
+                                }
+                            }))
+                    },
+                ))
+                .into_any_element(),
         )
     }
 }
