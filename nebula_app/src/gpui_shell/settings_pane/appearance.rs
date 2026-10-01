@@ -345,6 +345,11 @@ mod tests {
                 cx.simulate_keystrokes(action);
             }
             cx.run_until_parked();
+            // Focus/blur notifications are dispatched when the new frame is drawn.
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+            cx.run_until_parked();
             pane.read_with(cx, |pane, cx| {
                 assert!(
                     pane.font_size_editing.is_none(),
