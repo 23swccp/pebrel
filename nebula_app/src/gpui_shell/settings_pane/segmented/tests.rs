@@ -5,8 +5,10 @@ struct SegmentsHost(Entity<SettingsPane>);
 
 impl Render for SegmentsHost {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let focus = self.0.read(cx).focus_handle.clone();
         div()
             .size_full()
+            .track_focus(&focus)
             .child(self.0.update(cx, |pane, cx| pane.segmented_setting("vcs_display", cx).unwrap()))
     }
 }
@@ -69,6 +71,7 @@ fn capsule_uses_inset_thumb_full_hit_targets_and_keyboard_selection(cx: &mut gpu
     window.update(|window, cx| {
         pane.update(cx, |pane, cx| {
             pane.sync_select("vcs_display", "auto", window, cx);
+            pane.focus_handle.focus(window, cx);
             cx.notify();
         });
         let _ = window.draw(cx);

@@ -11,7 +11,7 @@ Every release entry is provided in English and Simplified Chinese.
 #### Fixed
 
 - Fixed SSH host form choices on Android not aligning to the right edge. Terminal mode, authentication method, and group selectors now share the form's trailing alignment while labels remain on the left.
-- Fixed settings segmented selectors losing their capsule shape and making the selected option hard to distinguish. An inset, contrasting thumb slides smoothly between choices, including rapid switching, with clear text and no internal divider lines.
+- Fixed settings segmented selectors losing their capsule shape and making the selected option hard to distinguish. An inset thumb follows the current theme's surface and text colors and slides smoothly between choices, including rapid switching. A subtle edge distinguishes selection without internal divider lines. Settings rows keep their normal background on hover, while individual controls retain interaction feedback.
 - Fixed the Android local terminal showing only a dollar prompt without its working directory. The default prompt now follows directory changes, while a custom prompt in the user's `.mkshrc` still takes precedence.
 - Fixed backup connection errors being clipped by the storage card and password help competing with controls for space. Error details remain fully visible, and password help has its own line below the action row.
 - Centered the theme name, appearance label and text-color swatches beneath the theme preview.
@@ -22,7 +22,7 @@ Every release entry is provided in English and Simplified Chinese.
 #### 修复
 
 - 修复：Android SSH 主机表单的选项组未靠右对齐的问题，终端模式、认证方式和分组选择器统一对齐表单右侧，标签保持在左侧。
-- 修复：设置页分段选择器丢失胶囊外观且选中项难以辨认的问题。选中滑块与轨道之间保留间距，并以清晰底色平滑移动；快速切换也从当前位置衔接，文字清晰，不显示内部直线分隔。
+- 修复：设置页分段选择器丢失胶囊外观且选中项难以辨认的问题。选中滑块与轨道之间保留间距，使用当前主题的表面色和文字色，以轻微边缘区分状态并平滑移动；快速切换也从当前位置衔接，不显示内部直线分隔。设置项整行悬停保持页面底色，具体控件保留操作反馈。
 - 修复：Android 本地终端提示符只显示美元符号、不显示当前路径的问题。默认提示符随目录切换更新，用户在 `.mkshrc` 中自定义的提示符仍优先生效。
 - 修复：备份存储卡片裁切连接错误，以及密码说明与操作控件挤在同一行的问题。错误详情完整显示，密码说明独立排列在操作行下方。
 - 修复：主题预览下方的名称、明暗标签和文字颜色色块未居中的问题。

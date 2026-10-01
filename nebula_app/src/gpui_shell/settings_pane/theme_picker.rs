@@ -479,7 +479,7 @@ impl SettingsPane {
             .w(px(if compact { width } else { 230.0 }))
             .flex_shrink_0()
             .items_center()
-            .child(preview)
+            .child(preview.debug_selector(|| "theme-picker-terminal-preview".into()))
             .child(
                 div()
                     .debug_selector(|| "theme-preview-name".into())

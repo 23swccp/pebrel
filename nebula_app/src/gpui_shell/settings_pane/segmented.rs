@@ -29,6 +29,13 @@ impl RenderOnce for SettingsSegments {
         let key = self.key;
         let count = self.buttons.len() as f32;
         let target = self.selected as f32 / count;
+        let panel = crate::gpui_shell::theme::settings_panel_bg(cx);
+        // Reuse the active theme's surface ramp; a choice is not a primary action.
+        let (track, thumb) = if cx.theme().is_dark() {
+            (panel, cx.theme().secondary)
+        } else {
+            (cx.theme().secondary, panel)
+        };
         let motion = window.use_keyed_state(
             SharedString::from(format!("settings-indicator-motion-{key}")),
             cx,
@@ -56,7 +63,14 @@ impl RenderOnce for SettingsSegments {
             .left(relative(target))
             .w(relative(1.0 / count))
             .rounded(self.height / 2.0)
-            .bg(cx.theme().primary);
+            .border_1()
+            .border_color(cx.theme().border.opacity(0.7))
+            .bg(thumb)
+            .shadow(vec![gpui::BoxShadow {
+                offset: gpui::point(px(0.0), px(1.0)),
+                blur_radius: px(3.0),
+                ..crate::gpui_shell::theme::card_shadow(cx)
+            }]);
         let indicator = if from == target {
             indicator.into_any_element()
         } else {
@@ -79,9 +93,11 @@ impl RenderOnce for SettingsSegments {
             .debug_selector(move || format!("settings-choices-{key}"))
             .w(px(SETTINGS_SELECT_WIDTH) + px(TRACK_INSET * 2.0))
             .max_w_full()
-            .p(px(TRACK_INSET))
+            .border_1()
+            .border_color(cx.theme().border)
+            .p(px(TRACK_INSET - 1.0))
             .rounded(self.height / 2.0 + px(TRACK_INSET))
-            .bg(cx.theme().secondary)
+            .bg(track)
             .child(
                 h_flex().relative().w_full().h(self.height).child(indicator).children(self.buttons),
             )
@@ -133,19 +149,15 @@ impl SettingsPane {
                             .custom(
                                 ButtonCustomVariant::new(cx)
                                     .foreground(if active {
-                                        cx.theme().primary_foreground
-                                    } else {
                                         cx.theme().foreground
-                                    })
-                                    .hover(if active {
-                                        cx.theme().primary_foreground.opacity(0.10)
                                     } else {
-                                        cx.theme().secondary_hover
+                                        cx.theme().muted_foreground
                                     })
-                                    .active(cx.theme().foreground.opacity(0.12)),
+                                    .hover(cx.theme().foreground.opacity(0.04))
+                                    .active(cx.theme().foreground.opacity(0.08)),
                             )
                             .font_weight(if active {
-                                FontWeight::SEMIBOLD
+                                FontWeight::MEDIUM
                             } else {
                                 FontWeight::NORMAL
                             })

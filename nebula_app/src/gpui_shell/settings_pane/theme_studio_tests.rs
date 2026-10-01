@@ -1299,7 +1299,7 @@ fn theme_picker_foreground_swatches_fit_above_footer_in_a_short_window(cx: &mut 
     draw(&mut window);
     click("open-theme-picker", &mut window);
 
-    let preview = window.debug_bounds("appearance-theme-preview").expect("theme preview");
+    let preview = window.debug_bounds("theme-picker-terminal-preview").expect("theme preview");
     for selector in ["theme-preview-name", "theme-preview-mode"] {
         let label = window.debug_bounds(selector).expect("preview caption");
         assert!(
