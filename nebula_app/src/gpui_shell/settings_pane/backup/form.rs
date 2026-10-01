@@ -174,7 +174,6 @@ impl SettingsPane {
                     Button::new("backup-browse")
                         .map(|button| crate::gpui_shell::widgets::settings_button(button, true, cx))
                         .label(l.text(Message::BackupFlowBrowse))
-                        .small()
                         .disabled(self.backup_busy)
                         .on_click(
                             cx.listener(|this, _, window, cx| this.pick_backup_folder(window, cx)),

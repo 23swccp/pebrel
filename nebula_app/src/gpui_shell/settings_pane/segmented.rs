@@ -171,17 +171,14 @@ impl SettingsPane {
                 height,
                 labels: labels.clone(),
                 fallback: Some(
-                    div()
-                        .debug_selector(move || format!("settings-segments-dropdown-{key}"))
-                        .w(px(SETTINGS_SELECT_WIDTH))
-                        .h(settings_control_height(cx))
-                        .child(
-                            Select::new(state)
-                                .h(settings_control_height(cx))
-                                .bg(cx.theme().transparent)
-                                .rounded(px(6.0)),
-                        )
-                        .into_any_element(),
+                    crate::gpui_shell::widgets::settings_select_frame(
+                        SharedString::from(format!("settings-segments-dropdown-{key}")),
+                        Select::new(state).appearance(false).h_full().rounded(px(6.0)),
+                        cx,
+                    )
+                    .debug_selector(move || format!("settings-segments-dropdown-{key}"))
+                    .w(px(SETTINGS_SELECT_WIDTH))
+                    .into_any_element(),
                 ),
                 buttons: values
                     .iter()

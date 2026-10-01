@@ -18,7 +18,7 @@ use gpui::{
     RenderImage, RenderOnce, SharedString, Styled as _, Window, div, px,
 };
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_component::{ActiveTheme as _, Disableable as _, Icon};
+use gpui_component::{ActiveTheme as _, Disableable as _, Icon, Sizable as _};
 use image::Frame;
 
 /// Shell 的彩色品牌图标（`extra/shell-icons` 的 PNG）预缩放成与物理像素
@@ -57,6 +57,7 @@ pub(crate) fn settings_control_height(cx: &App) -> gpui::Pixels {
 /// Outline uses the shared border; unlike upstream outline it has no input fill.
 pub(crate) fn settings_button(button: Button, outlined: bool, cx: &App) -> Button {
     button
+        .with_size(gpui_component::Size::Medium)
         .custom(
             ButtonCustomVariant::new(cx)
                 .foreground(if outlined {
@@ -68,7 +69,35 @@ pub(crate) fn settings_button(button: Button, outlined: bool, cx: &App) -> Butto
                 .active(cx.theme().foreground.opacity(0.08)),
         )
         .when(outlined, |button| button.border_1().border_color(cx.theme().border))
+        .h(settings_control_height(cx))
+        .px(px(12.0))
         .rounded(px(6.0))
+}
+
+/// Icon-only actions keep a square hit area without text-button side padding.
+pub(crate) fn settings_icon_button(button: Button, cx: &App) -> Button {
+    settings_button(button, false, cx).w(px(32.0)).h(px(32.0)).px_0()
+}
+
+/// The select keeps its native popup and keyboard handling; this frame supplies
+/// the transparent resting surface and visible pointer feedback.
+pub(crate) fn settings_select_frame(
+    id: impl Into<ElementId>,
+    control: impl IntoElement,
+    cx: &App,
+) -> gpui::Stateful<gpui::Div> {
+    let hover = cx.theme().foreground.opacity(if cx.theme().is_dark() { 0.08 } else { 0.06 });
+    let edge = cx.theme().muted_foreground.opacity(0.65);
+    div()
+        .id(id)
+        .h(settings_control_height(cx))
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(cx.theme().border)
+        .text_color(cx.theme().foreground)
+        .cursor_pointer()
+        .hover(move |frame| frame.bg(hover).border_color(edge))
+        .child(control)
 }
 
 /// Toolbar glyphs and their hover/hit surfaces have independent logical sizes.

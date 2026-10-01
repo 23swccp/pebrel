@@ -275,7 +275,6 @@ impl SettingsPane {
                             Button::new("backup-back")
                                 .debug_selector(|| "backup-back".into())
                                 .label(l.text(Message::BackupFlowBack))
-                                .small()
                                 .map(|button| {
                                     crate::gpui_shell::widgets::settings_button(button, false, cx)
                                 })
@@ -308,7 +307,6 @@ impl SettingsPane {
                                                     )
                                                 })
                                                 .label(l.text(Message::CloudExport))
-                                                .small()
                                                 .map(|button| {
                                                     crate::gpui_shell::widgets::settings_button(
                                                         button, false, cx,
@@ -332,7 +330,6 @@ impl SettingsPane {
                             Button::new("backup-later")
                                 .debug_selector(|| "backup-later".into())
                                 .label(l.text(Message::BackupFlowFinishLater))
-                                .small()
                                 .map(|button| {
                                     crate::gpui_shell::widgets::settings_button(button, false, cx)
                                 })

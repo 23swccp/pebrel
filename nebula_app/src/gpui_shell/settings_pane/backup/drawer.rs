@@ -61,7 +61,6 @@ impl SettingsPane {
                         .child(
                             Button::new("backup-defaults")
                                 .label(l.text(Message::BackupFlowDefaults))
-                                .small()
                                 .map(|button| {
                                     crate::gpui_shell::widgets::settings_button(button, false, cx)
                                 })
@@ -154,7 +153,7 @@ impl SettingsPane {
                             .icon(IconName::Close)
                             .small()
                             .map(|button| {
-                                crate::gpui_shell::widgets::settings_button(button, false, cx)
+                                crate::gpui_shell::widgets::settings_icon_button(button, cx)
                             })
                             .tooltip(l.text(Message::CommonClose))
                             .disabled(self.backup_busy)
@@ -195,7 +194,6 @@ impl SettingsPane {
                                             button, false, cx,
                                         )
                                     })
-                                    .small()
                                     .disabled(self.backup_busy)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.cancel_backup_sheet(window, cx)

@@ -640,7 +640,7 @@ fn apply_skin_tokens(chrome: &ResolvedTheme, cx: &mut App) {
     let list_selected = selected;
     theme.accent = hover;
     theme.accent_foreground = ink(sk.ink_strong);
-    theme.list_hover = ink(sk.ink).opacity(0.045);
+    theme.list_hover = ink(sk.ink).opacity(if sk.is_light { 0.06 } else { 0.08 });
     theme.list_active = ink(sk.accent).opacity(0.08);
     theme.list_active_border = transparent;
     theme.sidebar_foreground = ink(sk.ink);
