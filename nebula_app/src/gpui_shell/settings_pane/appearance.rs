@@ -2,6 +2,29 @@ use super::appearance_picker::AppearanceColors;
 use super::*;
 
 impl SettingsPane {
+    pub(super) fn finish_font_size_edit(
+        &mut self,
+        apply: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(ui) = self.font_size_editing.take() else { return };
+        if apply {
+            let value = self.font_size_input.read(cx).value();
+            if let Ok(size) = value.trim().parse::<f32>() {
+                if size.is_finite() {
+                    let (key, min, max) =
+                        if ui { ("ui_font_size", 10.0, 24.0) } else { ("font_size", 4.0, 96.0) };
+                    self.persist(&[(key, format!("{:.2}", size.clamp(min, max)))], cx);
+                }
+            }
+        }
+        if self.font_size_input.read(cx).focus_handle(cx).is_focused(window) {
+            self.focus_handle.focus(window, cx);
+        }
+        cx.notify();
+    }
+
     fn appearance_trigger(
         &self,
         theme: bool,
@@ -118,11 +141,44 @@ impl SettingsPane {
                     .disabled(size <= min)
                     .tooltip(language.pick("减小字号", "Decrease font size"))
                     .on_click(cx.listener(move |this, _, _, cx| {
+                        let size =
+                            if ui { this.font_size_px(cx) } else { this.terminal_font_size_px(cx) };
                         let next = (size.ceil() - 1.0).clamp(min, max);
                         this.persist(&[(key, format!("{next:.2}"))], cx);
                     })),
             )
-            .child(div().flex_1().text_center().child(format!("{size:.0} px")))
+            .child(if self.font_size_editing == Some(ui) {
+                Input::new(&self.font_size_input)
+                    .appearance(false)
+                    .focus_bordered(false)
+                    .cleanable(false)
+                    .w(px(74.0))
+                    .h(px(34.0))
+                    .aria_label(language.text(if ui {
+                        crate::i18n::Message::SettingsFontUiSize
+                    } else {
+                        crate::i18n::Message::CommonFontSize
+                    }))
+                    .into_any_element()
+            } else {
+                Button::new(SharedString::from(format!("{key}-edit")))
+                    .debug_selector(move || format!("{key}-edit"))
+                    .ghost()
+                    .w(px(74.0))
+                    .h(px(34.0))
+                    .label(format!("{size} px"))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.font_size_editing = Some(ui);
+                        this.font_size_input.update(cx, |input, cx| {
+                            let value = size.to_string();
+                            input.set_value(value.clone(), window, cx);
+                            input.focus(window, cx);
+                            input.set_selected_range(0..value.len(), cx);
+                        });
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            })
             .child(
                 Button::new(SharedString::from(format!("{key}-larger")))
                     .icon(IconName::Plus)
@@ -131,6 +187,8 @@ impl SettingsPane {
                     .disabled(size >= max)
                     .tooltip(language.pick("增大字号", "Increase font size"))
                     .on_click(cx.listener(move |this, _, _, cx| {
+                        let size =
+                            if ui { this.font_size_px(cx) } else { this.terminal_font_size_px(cx) };
                         let next = (size.floor() + 1.0).clamp(min, max);
                         this.persist(&[(key, format!("{next:.2}"))], cx);
                     })),
@@ -193,5 +251,67 @@ impl SettingsPane {
             ));
         let settings = self.appearance_advanced_settings(window, cx);
         v_flex().w_full().gap(px(GROUP_GAP)).child(selectors).child(settings)
+    }
+}
+
+#[cfg(all(test, feature = "gpui-test-support"))]
+mod tests {
+    use super::*;
+
+    #[gpui::test]
+    fn font_size_click_input_commits_cancels_and_bounds_values(cx: &mut gpui::TestAppContext) {
+        use crate::gpui_shell::settings_fixture::{SettingsBytesGuard, lock_theme_studio};
+        let _lock = lock_theme_studio();
+        let _settings = SettingsBytesGuard::capture();
+        persist_keys(&[("font_size", "15".into()), ("ui_font_size", "14".into())]).unwrap();
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
+        });
+        let mut pane = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| SettingsPane::new(window, cx));
+            pane = Some(view.clone());
+            gpui_component::Root::new(view, window, cx)
+        });
+        let pane = pane.unwrap();
+        cx.simulate_resize(gpui::size(px(1280.0), px(1800.0)));
+        for (key, text, action, expected) in [
+            ("font_size", "18.5", "enter", 18.5),
+            ("font_size", "27", "escape", 18.5),
+            ("font_size", "invalid", "enter", 18.5),
+            ("font_size", "NaN", "enter", 18.5),
+            ("font_size", "999", "enter", 96.0),
+            ("font_size", "-5", "enter", 4.0),
+            ("ui_font_size", "17", "tab", 17.0),
+        ] {
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
+            let bounds = cx.debug_bounds(&format!("{key}-edit")).unwrap();
+            cx.simulate_click(bounds.center(), gpui::Modifiers::default());
+            cx.run_until_parked();
+            assert!(pane.read_with(cx, |pane, _| pane.font_size_editing.is_some()));
+            cx.simulate_input(text);
+            cx.simulate_keystrokes(action);
+            cx.run_until_parked();
+            pane.read_with(cx, |pane, cx| {
+                assert!(pane.font_size_editing.is_none());
+                let actual = if key == "font_size" {
+                    pane.terminal_font_size_px(cx)
+                } else {
+                    pane.font_size_px(cx)
+                };
+                assert_eq!(actual, expected, "{key}: {text} via {action}");
+            });
+            let saved = RuntimeSettings::load();
+            if key == "font_size" {
+                assert_eq!(saved.font_size_px, Some(expected));
+                assert_eq!(saved.ui_font_size_px, Some(14.0));
+            } else {
+                assert_eq!(saved.font_size_px, Some(4.0));
+                assert_eq!(saved.ui_font_size_px, Some(expected));
+            }
+        }
     }
 }

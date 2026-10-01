@@ -551,6 +551,28 @@ impl SettingsPane {
             },
         ));
 
+        let font_size_input = cx.new(|cx| InputState::new(window, cx));
+        subscriptions.push(cx.subscribe_in(
+            &font_size_input,
+            window,
+            |this: &mut Self, _, event: &InputEvent, window, cx| {
+                if matches!(event, InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                    this.finish_font_size_edit(true, window, cx);
+                }
+            },
+        ));
+        subscriptions.push(cx.intercept_keystrokes(cx.listener(
+            |this, event: &gpui::KeystrokeEvent, window, cx| {
+                if this.font_size_editing.is_some()
+                    && this.font_size_input.read(cx).focus_handle(cx).is_focused(window)
+                    && event.keystroke.key == "escape"
+                {
+                    cx.stop_propagation();
+                    this.finish_font_size_edit(false, window, cx);
+                }
+            },
+        )));
+
         Self {
             focus_handle: cx.focus_handle(),
             runtime,
@@ -635,6 +657,8 @@ impl SettingsPane {
             font_imported: Vec::new(),
             font_family_input,
             font_family_cjk_input,
+            font_size_input,
+            font_size_editing: None,
             font_picker_trigger_bounds: None,
             font_picker_cjk_bounds: None,
             backup_selection: backup_remote.selection,
