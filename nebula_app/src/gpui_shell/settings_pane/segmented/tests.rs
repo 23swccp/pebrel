@@ -117,7 +117,7 @@ fn long_segments_use_a_real_dropdown_without_losing_preference_updates(
     window.simulate_keystrokes("down enter");
     window.run_until_parked();
     assert_eq!(RuntimeSettings::load().vcs_display.settings_value(), "git");
-    for (keys, expected) in [("end enter", "svn"), ("home enter", "auto")] {
+    for (keys, expected) in [("down enter", "svn"), ("up up enter", "auto")] {
         window.simulate_click(trigger.center(), gpui::Modifiers::default());
         window.run_until_parked();
         window.simulate_keystrokes(keys);
