@@ -784,7 +784,7 @@ mod tests {
         assert_eq!(theme.appearance, ThemeAppearance::Light);
         theme.ui.derive = true;
         assert!(theme.resolved_ui().derive);
-        assert_eq!(theme.resolved_ui().selection[3], 255);
+        assert_eq!(theme.resolved_ui().selection[3], 26);
 
         let palette = ThemeName::Nord.reviewed_palette();
         assert_eq!(ThemeUiColors::from_palette(palette).selection, palette.selected);
