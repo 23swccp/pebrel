@@ -784,6 +784,10 @@ mod tests {
         assert_eq!(theme.appearance, ThemeAppearance::Light);
         theme.ui.derive = true;
         assert!(theme.resolved_ui().derive);
+        assert_eq!(theme.ui.selection[3], 26);
+        // Derived surfaces are opaque; explicit UI colors preserve their alpha.
+        assert_eq!(theme.resolved_ui().selection[3], 255);
+        theme.ui.derive = false;
         assert_eq!(theme.resolved_ui().selection[3], 26);
 
         let palette = ThemeName::Nord.reviewed_palette();
