@@ -171,10 +171,16 @@ impl SettingsPane {
                 height,
                 labels: labels.clone(),
                 fallback: Some(
-                    Select::new(state)
+                    div()
+                        .debug_selector(move || format!("settings-segments-dropdown-{key}"))
+                        .w(px(SETTINGS_SELECT_WIDTH))
                         .h(settings_control_height(cx))
-                        .bg(cx.theme().transparent)
-                        .rounded(px(6.0))
+                        .child(
+                            Select::new(state)
+                                .h(settings_control_height(cx))
+                                .bg(cx.theme().transparent)
+                                .rounded(px(6.0)),
+                        )
                         .into_any_element(),
                 ),
                 buttons: values

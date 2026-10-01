@@ -696,6 +696,11 @@ fn apply_skin_tokens(chrome: &ResolvedTheme, cx: &mut App) {
     theme.button_primary_hover = theme.primary_hover;
     theme.button_primary_active = theme.primary_active;
     theme.button_primary_foreground = theme.primary_foreground;
+    if !chrome.is_custom() && chrome.base_name() == ThemeName::Nord {
+        // Keep frost blue readable under dark text in every pointer state.
+        theme.button_primary_hover = theme.primary.blend(theme.foreground.opacity(0.08));
+        theme.button_primary_active = theme.primary.blend(theme.foreground.opacity(0.14));
+    }
     // Nord's solid frost blue is intentional. Other themes use a soft wash;
     // keep the accent itself unchanged for switches, links and custom themes.
     if chrome.is_custom() || chrome.base_name() != ThemeName::Nord {
