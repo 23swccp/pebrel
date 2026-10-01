@@ -40,6 +40,7 @@ fn capsule_uses_inset_thumb_full_hit_targets_and_keyboard_selection(cx: &mut gpu
     for (value, selector) in [
         ("slide", "settings-choice-tab_reveal-slide"),
         ("instant", "settings-choice-tab_reveal-instant"),
+        ("slide", "settings-choice-tab_reveal-slide"),
     ] {
         window.update(|window, cx| {
             let _ = window.draw(cx);
