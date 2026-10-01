@@ -29,11 +29,11 @@ pub(super) const DESC_SCALE: f32 = 0.82;
 const LABEL_DESC_GAP: f32 = 4.0;
 /// 行内上下留白，行与行之间因此是它的两倍。用 padding 而不是行间 gap，左侧
 /// 轨道才连得上——断成一截一截的话，"哪几段亮着"根本读不出来。
-const ROW_PAD_Y: f32 = 24.0;
+const ROW_PAD_Y: f32 = 12.0;
 /// 紧凑密度下的同一个值（「界面外观」里的密度开关对设置页真实生效）。
-const ROW_PAD_Y_COMPACT: f32 = 12.0;
+const ROW_PAD_Y_COMPACT: f32 = 8.0;
 /// 组与组。
-pub(super) const GROUP_GAP: f32 = 48.0;
+pub(super) const GROUP_GAP: f32 = 32.0;
 /// 轨道宽度。
 const RAIL_W: f32 = 2.0;
 /// 内容相对轨道的缩进。标题左对齐轨道本身、行内容缩进这么多——标题是命名者
@@ -79,7 +79,7 @@ impl SettingsPane {
         // 不设宽度则走 flex 交叉轴 stretch：布局算法直接拉伸，不依赖父宽解析。
         v_flex().w_full().child(
             div()
-                .pb(px(20.0))
+                .pb(px(10.0))
                 .text_size(px(base_px * DESC_SCALE))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(cx.theme().muted_foreground)

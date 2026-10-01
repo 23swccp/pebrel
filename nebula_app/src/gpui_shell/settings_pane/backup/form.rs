@@ -116,7 +116,6 @@ impl SettingsPane {
                 let selected = self.backup_remote_inputs[0].read(cx).value();
                 control = control.child(
                     Button::new("backup-ssh-host")
-                        .map(|button| crate::gpui_shell::widgets::settings_button(button, true, cx))
                         .flex_1()
                         .min_w_0()
                         .dropdown_caret(true)
@@ -172,7 +171,6 @@ impl SettingsPane {
             if protocol == BackupProtocol::Folder {
                 control = control.child(
                     Button::new("backup-browse")
-                        .map(|button| crate::gpui_shell::widgets::settings_button(button, true, cx))
                         .label(l.text(Message::BackupFlowBrowse))
                         .small()
                         .disabled(self.backup_busy)

@@ -13,14 +13,13 @@ pub struct FreshPalette {
 
 impl ThemeName {
     /// The only catalog of selectable built-ins. Retired identifiers remain readable.
-    pub const BUILTIN: [Self; 16] = [
+    pub const BUILTIN: [Self; 15] = [
         Self::BreezeLight,
         Self::BreezeDark,
         Self::MintLight,
         Self::MintDark,
         Self::SilverLight,
         Self::Nord,
-        Self::NordLight,
         Self::Paper,
         Self::LimestoneLight,
         Self::LinenLight,
@@ -65,7 +64,6 @@ impl ThemeName {
                 Self::BreezeLight
                     | Self::MintLight
                     | Self::SilverLight
-                    | Self::NordLight
                     | Self::Paper
                     | Self::LimestoneLight
                     | Self::LinenLight
@@ -216,40 +214,21 @@ impl ThemeName {
                 cyan: [0x88, 0xc0, 0xd0],
                 frame: [0x65, 0x72, 0x86],
             },
-            // Snow Storm / Polar Night from nordtheme/nord; accent and ANSI
-            // inks are darkened for light surfaces, not an official Nord port.
-            Self::NordLight => ReviewedPalette {
-                shell: rgb(0xe5e9f0),
-                background: rgb(0xeceff4),
-                foreground: rgb(0x2e3440),
-                muted: rgb(0x596579),
-                accent: rgb(0x4c6a87),
-                selected: [0xd8, 0xde, 0xe9, 255],
-                line: [0xcc, 0xd3, 0xdf, 255],
-                red: rgb(0xa3434c),
-                green: rgb(0x506b3e),
-                yellow: rgb(0x826323),
-                blue: rgb(0x4c6a87),
-                purple: rgb(0x805578),
-                cyan: rgb(0x376d76),
-                frame: rgb(0x9ca9bb),
-            },
-            // Warm Sand: user-supplied palette; Paper is the compatibility identity.
             Self::Paper => ReviewedPalette {
-                shell: rgb(0xf5f4f2),
-                background: rgb(0xfdfdfc),
-                foreground: rgb(0x2f2e2b),
-                muted: rgb(0x736e68),
-                accent: rgb(0xd97706),
-                selected: [0xd9, 0x77, 0x06, 26],
-                line: [0xeb, 0xe9, 0xe6, 255],
-                red: rgb(0xa34740),
-                green: rgb(0x576d46),
-                yellow: rgb(0x896327),
-                blue: rgb(0x506d80),
-                purple: rgb(0x805e78),
-                cyan: rgb(0x426f6a),
-                frame: rgb(0xa8a29e),
+                shell: [0xf5, 0xf4, 0xf0],
+                background: [0xfc, 0xfb, 0xf9],
+                foreground: [0x1a, 0x1a, 0x1a],
+                muted: [0x73, 0x73, 0x69],
+                accent: [0x2b, 0x5a, 0x38],
+                selected: [0xe9, 0xe8, 0xe1, 255],
+                line: [0xde, 0xdd, 0xd4, 255],
+                red: [0xa3, 0x3a, 0x3a],
+                green: [0x2b, 0x5a, 0x38],
+                yellow: [0xa8, 0x5a, 0x20],
+                blue: [0x4a, 0x7a, 0x8a],
+                purple: [0x4a, 0x3a, 0x6a],
+                cyan: [0x3a, 0x7a, 0x6a],
+                frame: [0xb2, 0xb0, 0xa3],
             },
             Self::LimestoneLight => ReviewedPalette {
                 shell: [0xf0, 0xef, 0xeb],
@@ -349,23 +328,21 @@ impl ThemeName {
                 cyan: [0x8b, 0xd5, 0xca],
                 frame: [0x6e, 0x73, 0x8d],
             },
-            // Slate Light: user-supplied cool-gray palette. The Rust identity
-            // stays GlassLight so existing saved preferences remain readable.
             Self::GlassLight => ReviewedPalette {
-                shell: rgb(0xf8fafc),
-                background: rgb(0xffffff),
-                foreground: rgb(0x0f172a),
-                muted: rgb(0x475569),
-                accent: rgb(0x6366f1),
-                selected: [0x63, 0x66, 0xf1, 26],
-                line: [0xe2, 0xe8, 0xf0, 255],
-                red: rgb(0xb91c1c),
-                green: rgb(0x15803d),
-                yellow: rgb(0x92600a),
-                blue: rgb(0x4f46e5),
-                purple: rgb(0x7e22ce),
-                cyan: rgb(0x0e7490),
-                frame: rgb(0x94a3b8),
+                shell: [0xe9, 0xec, 0xef],
+                background: [0xef, 0xf1, 0xf5],
+                foreground: [0x30, 0x30, 0x30],
+                muted: [0x56, 0x61, 0x6b],
+                accent: [0x74, 0x5a, 0xa5],
+                selected: [0xff, 0xff, 0xff, 0x55],
+                line: [0x56, 0x6b, 0x7c, 0x30],
+                red: [0xa3, 0x17, 0x00],
+                green: [0x0a, 0x7f, 0x3d],
+                yellow: [0xaf, 0x55, 0x1d],
+                blue: [0x00, 0x6c, 0xd8],
+                purple: [0x58, 0x3c, 0xac],
+                cyan: [0x00, 0x79, 0x8a],
+                frame: [0xa4, 0xb4, 0xbd],
             },
             Self::GlassDark => ReviewedPalette {
                 shell: [0x44, 0x44, 0x45],
@@ -391,14 +368,6 @@ impl ThemeName {
 pub(crate) fn fresh_terminal(name: ThemeName) -> TermTheme {
     let palette = name.fresh_palette().expect("fresh theme");
     let ansi = match name {
-        ThemeName::NordLight => [
-            0x2e3440, 0xa3434c, 0x506b3e, 0x826323, 0x4c6a87, 0x805578, 0x376d76, 0x4c566a,
-            0x596579, 0x933e47, 0x466034, 0x74571c, 0x405d79, 0x71496a, 0x2d626b, 0x3b4252,
-        ],
-        ThemeName::Paper => [
-            0x2f2e2b, 0xa34740, 0x576d46, 0x896327, 0x506d80, 0x805e78, 0x426f6a, 0x62594f,
-            0x736e68, 0x943c36, 0x4a613b, 0x7b581f, 0x456172, 0x73516b, 0x37635e, 0x4a433b,
-        ],
         ThemeName::CatppuccinMocha => [
             0x45475a, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xbac2de,
             0x585b70, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xa6adc8,
@@ -417,8 +386,8 @@ pub(crate) fn fresh_terminal(name: ThemeName) -> TermTheme {
             0x5b6078, 0xec7486, 0x8ccf7f, 0xe1c682, 0x78a1f6, 0xf2a9dd, 0x63cbc0, 0xb8c0e0,
         ],
         ThemeName::GlassLight => [
-            0x0f172a, 0xb91c1c, 0x15803d, 0x92600a, 0x4f46e5, 0x7e22ce, 0x0e7490, 0x475569,
-            0x64748b, 0x991b1b, 0x166534, 0x854d0e, 0x4338ca, 0x6b21a8, 0x155e75, 0x334155,
+            0x303030, 0xa31700, 0x0a7f3d, 0xaf551d, 0x006cd8, 0x583cac, 0x00798a, 0x494949,
+            0x8c8c8c, 0xa31700, 0x0a7f3d, 0xaf551d, 0x006cd8, 0x583cac, 0x00798a, 0x1c1c1c,
         ],
         ThemeName::GlassDark => [
             0x252a35, 0xff8a8a, 0xa8d46f, 0xe8c778, 0x8db7ff, 0xd1a3ff, 0x7fd6c2, 0xe3e6f0,
@@ -434,20 +403,17 @@ pub(crate) fn fresh_terminal(name: ThemeName) -> TermTheme {
         ],
     }
     .map(rgb);
-    // Preserve Paper's user-provided cursor and selection when reading old
-    // preferences. New explicit theme choices still use the shared UI palette.
-    let inherit_terminal_marks = name == ThemeName::Paper;
     TermTheme {
         background: palette.surface,
         is_light: palette.is_light,
         exact: Some(ExactTermColors {
             foreground: palette.foreground,
             ansi,
-            cursor: (!inherit_terminal_marks).then_some(palette.accent),
-            cursor_text: (!inherit_terminal_marks).then_some(palette.surface),
-            cursor_stroke: (!inherit_terminal_marks).then_some(palette.accent),
-            selection_foreground: (!inherit_terminal_marks).then_some(palette.foreground),
-            selection_background: (!inherit_terminal_marks).then_some(palette.shell),
+            cursor: Some(palette.accent),
+            cursor_text: Some(palette.surface),
+            cursor_stroke: Some(palette.accent),
+            selection_foreground: Some(palette.foreground),
+            selection_background: Some(palette.shell),
         }),
         powerline: [
             palette.accent,
@@ -465,33 +431,9 @@ pub(crate) fn fresh_terminal(name: ThemeName) -> TermTheme {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn renamed_light_themes_accept_old_preferences_and_use_canonical_names() {
-        for (old, current, expected) in [
-            ("Paper", "WarmSand", ThemeName::Paper),
-            ("GlassLight", "SlateLight", ThemeName::GlassLight),
-        ] {
-            for value in [old, current] {
-                let raw = crate::RawSettings::from_text(&format!("theme={value}\ncustom=keep\n"));
-                assert_eq!(crate::RuntimeSettings::from_raw(&raw).theme, expected);
-                assert_eq!(ThemeName::from_prompt_name(value), Some(expected));
-            }
-            assert_eq!(expected.prompt_name(), current);
-            assert!(ThemeName::BUILTIN_NAMES.contains(&current));
-            assert!(!ThemeName::BUILTIN_NAMES.contains(&old));
-        }
-        assert_eq!(ThemeName::default(), ThemeName::Nord);
-        assert!(ThemeName::BUILTIN.contains(&ThemeName::NordLight));
-        assert!(ThemeName::NordLight.term_theme().is_light);
-    }
-
     #[test]
     fn fresh_themes_round_trip_and_keep_readable_foreground() {
         for name in [
-            ThemeName::NordLight,
-            ThemeName::Paper,
-            ThemeName::GlassLight,
             ThemeName::BreezeLight,
             ThemeName::BreezeDark,
             ThemeName::MintLight,
