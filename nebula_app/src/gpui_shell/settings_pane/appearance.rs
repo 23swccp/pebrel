@@ -266,6 +266,7 @@ mod tests {
         persist_keys(&[("font_size", "15".into()), ("ui_font_size", "14".into())]).unwrap();
         cx.update(|cx| {
             gpui_component::init(cx);
+            cx.set_reduce_motion(true);
             cx.set_global(crate::gpui_shell::config::Settings::load(ThemeName::Nord));
         });
         let mut pane = None;
@@ -299,8 +300,14 @@ mod tests {
                 .unwrap();
             cx.simulate_click(bounds.center(), gpui::Modifiers::default());
             cx.run_until_parked();
-            assert!(pane.read_with(cx, |pane, _| pane.font_size_editing.is_some()));
+            assert!(
+                pane.read_with(cx, |pane, _| pane.font_size_editing.is_some()),
+                "{key}: {text} via {action} must enter editing at {bounds:?}"
+            );
             cx.update(|window, cx| {
+                // Mount the editor before dispatching text: the native test host
+                // does not draw a notified frame automatically.
+                let _ = window.draw(cx);
                 assert!(
                     pane.read(cx).font_size_input.read(cx).focus_handle(cx).is_focused(window),
                     "{key}: input must receive focus after clicking its value"
@@ -312,6 +319,9 @@ mod tests {
                 text,
                 "{key}: typing must replace the selected current value"
             );
+            cx.update(|window, cx| {
+                let _ = window.draw(cx);
+            });
             if action == "blur" {
                 cx.update(|window, cx| {
                     pane.read(cx).settings_search_input.read(cx).focus_handle(cx).focus(window, cx);
