@@ -277,6 +277,8 @@ mod tests {
         });
         let pane = pane.unwrap();
         cx.simulate_resize(gpui::size(px(1280.0), px(1800.0)));
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
         for (key, text, action, expected) in [
             ("font_size", "18.5", "enter", 18.5),
             ("font_size", "27", "escape", 18.5),
