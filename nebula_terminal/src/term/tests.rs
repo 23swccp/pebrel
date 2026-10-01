@@ -505,7 +505,6 @@ fn single_codepoint_emoji_keep_two_column_cells() {
 }
 
 #[test]
-#[ignore = "Expected failure for issue #403 until composed emoji occupy one grapheme cell."]
 fn composed_emoji_occupy_one_two_column_cell() {
     let errors: Vec<_> = ["👨‍👩‍👧", "🏳️‍🌈", "❤️‍🔥", "🐦‍⬛", "🙂‍↔️", "👍🏽", "🇨🇳"]
         .into_iter()
