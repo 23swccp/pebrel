@@ -138,6 +138,17 @@ impl RenderOnce for NebulaSwitch {
                     on_click(&!checked, window, cx);
                 })
             });
-        div().id(group.clone()).group(group).child(button)
+        div()
+            .id(group.clone())
+            .group(group)
+            // A containing settings row can focus or toggle itself. Let Button
+            // handle activation first, then keep the same gesture inside the switch.
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_key_down(|event, _, cx| {
+                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                    cx.stop_propagation();
+                }
+            })
+            .child(button)
     }
 }

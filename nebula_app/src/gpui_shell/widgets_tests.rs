@@ -76,6 +76,12 @@ impl Render for SwitchProbe {
         h_flex()
             .track_focus(&self.focus)
             .gap(px(16.0))
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, _| {
+                panic!("switch mouse gesture reached the containing row")
+            })
+            .on_key_down(|event, _, _| {
+                assert!(!matches!(event.keystroke.key.as_str(), "enter" | "space"));
+            })
             .child(NebulaSwitch::new("probe").checked(self.checked).on_click(cx.listener(
                 |this, checked, _, cx| {
                     this.checked = *checked;
