@@ -786,7 +786,7 @@ fn apply_skin_tokens(chrome: &ResolvedTheme, cx: &mut App) {
             ".SystemUIFont"
         };
     theme.font_family = ui_font_family.unwrap_or_else(|| default_ui_font.to_owned()).into();
-    theme.radius = px(crate::display::UI_CORNER_RADIUS_LOGICAL);
+    theme.radius = px(6.0);
     theme.radius_lg = px(12.0);
 
     // 1.16 的 Button、Slider、Switch 等背景统一读取 ThemeTokens。Nebula 的

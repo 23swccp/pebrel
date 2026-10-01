@@ -119,7 +119,7 @@ fn switch_padding_keyboard_and_disabled_state_share_button_activation(cx: &mut T
     window.update(|window, cx| {
         assert!(probe.read(cx).checked);
         assert_eq!(probe.read(cx).changes, 1);
-        probe.read(cx).focus.focus(window, cx);
+        probe.read(cx).focus.clone().focus(window, cx);
         let _ = window.draw(cx);
     });
     window.simulate_keystrokes("tab enter");

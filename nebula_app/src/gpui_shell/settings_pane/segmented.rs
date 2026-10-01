@@ -129,7 +129,8 @@ impl SettingsPane {
         let labels =
             localized_select_labels(key, values, crate::gpui_shell::config::ui_language(cx));
         let height = (cx.theme().font_size * 2.0).max(px(28.0));
-        let font_size = cx.theme().font_size * (13.0 / 14.0);
+        // Match Button::small: its inner label uses 0.875 rem.
+        let font_size = cx.theme().font_size * 0.875;
         let mut font = gpui::font(cx.theme().font_family.clone());
         font.weight = FontWeight::MEDIUM;
         let text_system = cx.text_system();
@@ -176,7 +177,7 @@ impl SettingsPane {
                             .debug_selector(move || format!("settings-choice-{key}-{value}"))
                             .flex_1()
                             .min_w_0()
-                            .with_size(gpui_component::Size::Size(font_size / 0.875))
+                            .small()
                             .h(height)
                             .px(px(12.0))
                             .rounded(height / 2.0)
