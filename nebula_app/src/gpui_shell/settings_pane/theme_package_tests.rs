@@ -211,13 +211,43 @@ fn cancelled_zip_picker_cannot_modify_a_reopened_package_dialog(cx: &mut TestApp
 fn package_controls_keep_hit_targets_and_keyboard_focus_in_a_narrow_window(
     cx: &mut TestAppContext,
 ) {
+    narrow_package_controls(cx, crate::display::UiLanguage::EnUs);
+}
+
+#[gpui::test]
+fn package_controls_keep_hit_targets_and_keyboard_focus_in_chinese(cx: &mut TestAppContext) {
+    narrow_package_controls(cx, crate::display::UiLanguage::ZhCn);
+}
+
+fn narrow_package_controls(cx: &mut TestAppContext, language: crate::display::UiLanguage) {
     let _fixture_guard = lock_theme_studio();
     let (pane, mut window) = open_settings(cx);
+    window.update(|window, cx| {
+        cx.global_mut::<crate::gpui_shell::config::Settings>().ui_language = language;
+        window.refresh();
+    });
+    draw(&mut window);
     open_theme_editor(&mut window);
     window.simulate_resize(size(px(600.0), px(850.0)));
     draw(&mut window);
+    let editor_bounds = window.debug_bounds("theme-editor-dialog").unwrap();
+    for selector in
+        ["theme-editor-import", "theme-editor-export", "theme-editor-package", "theme-editor-close"]
+    {
+        let hit = window.debug_bounds(selector).unwrap();
+        assert!(hit.size.height >= px(32.0), "{language:?}: {selector} hit target: {hit:?}");
+        assert!(
+            hit.left() >= editor_bounds.left()
+                && hit.right() <= editor_bounds.right()
+                && hit.top() >= editor_bounds.top()
+                && hit.bottom() <= editor_bounds.bottom(),
+            "{language:?}: {selector} must stay inside the editor: hit={hit:?}, editor={editor_bounds:?}"
+        );
+    }
     click("theme-editor-package", &mut window);
-    let dialog = window.debug_bounds("theme-package-dialog").unwrap();
+    let dialog = window
+        .debug_bounds("theme-package-dialog")
+        .expect("ZIP dialog opens from its visible header control");
     for selector in [
         "theme-package-confirm",
         "theme-package-cancel",
