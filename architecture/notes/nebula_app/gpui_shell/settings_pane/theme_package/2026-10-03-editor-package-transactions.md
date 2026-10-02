@@ -2,7 +2,8 @@
 
 ## Status
 
-Implemented locally; native visual and repository CI acceptance are in progress.
+Implemented and tested locally on Windows; dark/light native modal inspection
+passed. Repository CI and other-platform visual acceptance remain pending.
 
 ## Context
 
@@ -61,10 +62,14 @@ a format check cannot stand in for playback, memory, or frame-scheduling accepta
 
 ## Validation
 
-Rendered cases cover background/preview export with identity, confirmation-only
-installation, repeated clicks, changed and invalid archives, late picker results,
-visible hit targets and Tab/Escape in a narrow window. Actual execution and visual
-results are recorded after those checks finish.
+The Windows GPUI product build passed. All five rendered package regressions and
+34 theme-studio cases passed, with one existing manual visual test skipped.
+Cases cover background/preview export with identity, confirmation-only installation,
+repeated clicks, changed/invalid archives, late pickers, visible hit targets, and
+Tab/Escape in a narrow window. Internationalization contract tests passed (23, one
+existing ignored); governance/name regressions passed (73). Native Nord and Warm
+Sand modal screenshots confirmed layout, labels and theme roles. This is local
+Windows evidence; other-platform visual and repository CI acceptance remain separate.
 
 ## Supersedes
 

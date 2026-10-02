@@ -43,6 +43,7 @@ impl SettingsPane {
                             })
                             .child(
                                 Input::new(input)
+                                    .aria_label(language.text(message))
                                     .appearance(false)
                                     .h(px(32.0))
                                     .w_full()
@@ -279,6 +280,7 @@ impl SettingsPane {
                 },
             };
         let tabs = h_flex()
+            .self_start()
             .gap(px(2.0))
             .p(px(2.0))
             .rounded_full()
