@@ -11,30 +11,18 @@ example.pebrel-theme.zip
     preview.jpg
 ```
 
-## 分享 / Share
+## 边界 / Boundary
 
-先在主题编辑器导出 Pebrel JSON，再打包：
+包核心负责校验、带资源导出和本地安装。CLI 与编辑器入口在各自的适配层接入，
+共同调用本模块，不重复实现大小、路径或完整性规则。
 
-```sh
-pebrel theme pack example.pebrel-theme.json --output example.pebrel-theme.zip --author "Your name" --github your-handle --license CC-BY-4.0 --version 1.0.0 --preview preview.jpg
-```
+安装只添加到本地主题库，不自动应用运行设置。本阶段支持静态背景及可选预览图；
+动态媒体不被本模块激活。删除主题 JSON 目前保留资源目录，自动清理尚未接入。
 
-`--preview` 是可选的社区预览图；背景的相对路径以主题 JSON 所在目录为基准。
-
-检查或导入别人分享的文件：
-
-```sh
-pebrel theme check example.pebrel-theme.zip
-pebrel theme import example.pebrel-theme.zip
-```
-
-导入只添加到本地主题库。在主题选择器中选择并应用，才会改变窗口。
-本阶段打包支持静态背景图片及可选预览图；编辑器内的 ZIP 导出入口和动态媒体后续接入。
-删除主题 JSON 目前保留已安装的资源目录；自动清理和应用内卸载尚未接入。
-
-Export Pebrel JSON from the theme editor, then use `theme pack` to include the
-local background image. `theme check` verifies the ZIP and resources; `theme
-import` adds it to the local library without applying it.
+The package core validates archives, streams portable exports, and installs
+managed resources. CLI and editor adapters share this boundary. Installation
+adds a library theme without applying runtime preferences. Resource directories
+currently remain after deleting a library JSON; automatic cleanup is separate.
 
 ## 体积 / Size
 
