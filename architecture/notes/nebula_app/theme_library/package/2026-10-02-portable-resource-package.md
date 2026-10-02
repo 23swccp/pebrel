@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented and validated locally as a cold package/CLI foundation on Windows;
+Implemented and validated locally as a cold package foundation on Windows;
 repository review and other-platform validation are pending.
 
 ## Context
@@ -40,8 +40,7 @@ Export uses a sibling temporary ZIP, verifies the completed artifact, and atomic
 replaces the requested destination. Install extracts only declared regular files
 into a unique directory; failure before library publication removes that directory.
 Images are stored without recompression, and no media decoder or execution engine
-is introduced. Rust package constants own actual install limits; the CLI exposes
-them for community policy comparison.
+is introduced. Rust package constants own actual install limits; callers reuse that authority.
 
 ## Rejected alternatives
 
@@ -54,8 +53,8 @@ them for community policy comparison.
 
 ## Consequences
 
-The first entry is explicit file-based pack/check/import. GUI package controls and
-community download orchestration can use the same package boundary later.
+The package API owns export/check/install independently from CLI registration,
+shell completion snapshots, GUI controls, and community download orchestration.
 Static image themes include an optional preview image; declared future resource
 kinds remain unactivated.
 Installed resource cleanup and references must follow library ownership rather
@@ -69,9 +68,8 @@ Tests cover image round-trip/install, author metadata, optional values, duplicat
 imports, video budgets, portable paths, undeclared entries, integrity mismatch,
 archive preflight, export destination preservation, and extraction rollback.
 The Windows GPUI product build passed. All 41 theme-library tests passed,
-including 15 package regressions. The actual executable completed pack/check/import
-with background and preview images, then loaded installed resources after the
-source images were deleted. Preferences remained byte-for-byte unchanged.
+including 15 package regressions. Round-trip tests install background and preview resources after their source
+images are removed. The package API never publishes runtime preferences.
 The related rendered theme-studio suite passed 29 tests (one existing manual visual
 review skipped). Architecture, formatting, file-budget, settings, internationalization,
 and governance/name checks passed locally. No media playback or GUI ZIP acceptance
