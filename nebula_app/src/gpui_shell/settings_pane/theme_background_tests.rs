@@ -53,6 +53,7 @@ fn background_controls_are_draft_only_and_native_export_keeps_effects(cx: &mut T
     let settings_before = settings_file_snapshot();
     let library_before = custom_theme_ids();
     open_theme_editor(&mut window);
+    reveal("theme-editor-advanced-toggle", &mut window);
     click("theme-editor-advanced-toggle", &mut window);
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("背景.png");
@@ -115,6 +116,7 @@ fn invalid_background_shows_preview_error_without_publishing_settings(cx: &mut T
     let (pane, mut window) = open_settings(cx);
     let before_settings = settings_file_snapshot();
     open_theme_editor(&mut window);
+    reveal("theme-editor-advanced-toggle", &mut window);
     click("theme-editor-advanced-toggle", &mut window);
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("invalid.png");
@@ -148,6 +150,7 @@ fn background_save_apply_publishes_image_and_independent_opacities(cx: &mut Test
     let path = dir.path().join("applied.png");
     image::RgbaImage::from_pixel(4, 4, image::Rgba([20, 40, 80, 255])).save(&path).unwrap();
     edit_input("theme-editor-opacity", "80%", &mut window);
+    reveal("theme-editor-advanced-toggle", &mut window);
     click("theme-editor-advanced-toggle", &mut window);
     choose_image(&path, &mut window);
     reveal("theme-editor-image-opacity", &mut window);
@@ -177,6 +180,7 @@ fn late_background_picker_cannot_change_a_reopened_editor(cx: &mut TestAppContex
     let (pane, mut window) = open_settings(cx);
     let before_settings = settings_file_snapshot();
     open_theme_editor(&mut window);
+    reveal("theme-editor-advanced-toggle", &mut window);
     click("theme-editor-advanced-toggle", &mut window);
     reveal("theme-editor-image-choose", &mut window);
     click("theme-editor-image-choose", &mut window);
