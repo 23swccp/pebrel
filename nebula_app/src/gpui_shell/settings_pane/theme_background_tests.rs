@@ -2,30 +2,7 @@
 use super::*;
 
 fn reveal(selector: &'static str, window: &mut VisualTestContext) {
-    for _ in 0..24 {
-        let target = window.debug_bounds(selector).expect("background control layout");
-        let viewport =
-            window.debug_bounds("theme-editor-fields-scroll").expect("editor scroll viewport");
-        if target.top() >= viewport.top() + px(8.0)
-            && target.bottom() <= viewport.bottom() - px(8.0)
-        {
-            return;
-        }
-        let dy = if target.top() < viewport.top() { 160.0 } else { -160.0 };
-        window.update(|window, cx| {
-            window.dispatch_event(
-                gpui::PlatformInput::ScrollWheel(gpui::ScrollWheelEvent {
-                    position: viewport.center(),
-                    delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.0), px(dy))),
-                    touch_phase: gpui::TouchPhase::Moved,
-                    modifiers: Default::default(),
-                }),
-                cx,
-            );
-        });
-        draw(window);
-    }
-    panic!("control did not become visible: {selector}");
+    reveal_editor_control(selector, window);
 }
 
 fn choose_image(path: &std::path::Path, window: &mut VisualTestContext) {
