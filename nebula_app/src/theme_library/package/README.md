@@ -35,7 +35,7 @@ currently remain after deleting a library JSON; automatic cleanup is separate.
 | 文件数 / Entries | 64 |
 
 实际字节数、路径和 SHA-256 都会检查。打包或导入不会执行包内代码。
-`pebrel theme limits` 输出安装器实际使用的限制。
+包模块的 Rust 常量是安装限制的唯一实现。
 
 图片路径在包内使用相对路径，导入时转换为安装目录内的本地路径。
 不接受路径穿越、盘符、设备文件、符号链接、重复文件名、加密或分卷 ZIP。
@@ -44,4 +44,4 @@ currently remain after deleting a library JSON; automatic cleanup is separate.
 The installer enforces actual stream sizes and SHA-256, validates portable
 relative paths, and rejects undeclared entries. Video/animation/shader resource
 kinds reserve metadata for later capabilities; this build does not activate them.
-The CLI handles files as cold operations, without resident scans or media decoding.
+Callers perform cold operations without resident scans or media decoding.
