@@ -510,6 +510,23 @@ impl SettingsPane {
                                         this.open_theme_export(window, cx);
                                     })),
                             )
+                            .child(
+                                Button::new("theme-editor-package")
+                                    .debug_selector(|| "theme-editor-package".to_owned())
+                                    .label(language.text(if compact {
+                                        Message::ThemePackageShort
+                                    } else {
+                                        Message::ThemePackageEntry
+                                    }))
+                                    .tooltip(language.text(Message::ThemePackageEntry))
+                                    .ghost()
+                                    .h(px(32.0))
+                                    .px(px(12.0))
+                                    .disabled(save_busy)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_theme_package(window, cx)
+                                    })),
+                            )
                             .child(div().w(px(1.0)).h(px(20.0)).bg(colors.line))
                             .child(
                                 Button::new("theme-editor-close")
