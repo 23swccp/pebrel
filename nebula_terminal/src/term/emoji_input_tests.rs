@@ -5,6 +5,8 @@ use crate::render::{RenderSnapshot, SnapshotConfig};
 use crate::term::{Config, test::TermSize};
 use crate::vte::ansi::{Handler as _, Processor};
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
+use unicode_properties::UnicodeEmoji as _;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 const EMOJI: &[&str] = &["👨‍👩‍👧", "🏳️‍🌈", "❤️‍🔥", "🐦‍⬛", "🙂‍↔️", "👍🏽", "🇨🇳"];
 
@@ -193,5 +195,22 @@ fn wrapped_wide_input_and_selector_promotion_preserve_insert_mode_target_text() 
         assert_eq!(cell_text(&term.grid[Line(1)][Column(0)]), text);
         assert_eq!(term.grid[Line(1)][Column(2)].c, 'X');
         assert_eq!(term.grid[Line(1)][Column(3)].c, 'Y');
+    }
+}
+
+#[test]
+fn locked_unicode_data_has_no_initial_positive_bmp_emoji_extension() {
+    let bases: Vec<char> = (0..=0x10ffff)
+        .filter_map(char::from_u32)
+        .filter(|c| c.is_emoji_char() && c.width().is_some_and(|width| width > 0))
+        .collect();
+    for next in bases.iter().copied().filter(|c| *c <= '\u{ffff}') {
+        for first in &bases {
+            let mut buffer = [0; 8];
+            let first_len = first.encode_utf8(&mut buffer).len();
+            let next_len = next.encode_utf8(&mut buffer[first_len..]).len();
+            let pair = std::str::from_utf8(&buffer[..first_len + next_len]).unwrap();
+            assert_eq!(pair.graphemes(true).count(), 2, "initial pair {pair:?}");
+        }
     }
 }

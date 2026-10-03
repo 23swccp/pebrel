@@ -1,6 +1,6 @@
 //! Streaming emoji cell allocation. Ordinary text keeps the existing VT placement.
 
-use unicode_properties::{UnicodeEmoji as _, emoji::is_regional_indicator};
+use unicode_properties::UnicodeEmoji as _;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
@@ -179,13 +179,10 @@ impl<T: EventListener> Term<T> {
     }
 
     fn extend_emoji_input(&mut self, c: char, char_width: usize) -> bool {
-        // Ordinary letters/CJK cannot be a positive-width emoji continuation.
-        // No Emoji property lookup or segmenter initialization on this path.
-        if self.input_cluster.is_none()
-            && char_width > 0
-            && c.is_alphanumeric()
-            && !is_regional_indicator(c)
-        {
+        // Without a preceding zero-width continuation, Unicode 17's positive
+        // emoji extensions are supplementary-plane modifiers or RI symbols.
+        // The locked-data regression checks every BMP successor against all bases.
+        if self.input_cluster.is_none() && char_width > 0 && c <= '\u{ffff}' {
             return false;
         }
         let Some((next, wrap)) = self.input_end else { return false };
