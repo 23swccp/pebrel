@@ -159,7 +159,11 @@ pub(super) fn tooltip(text: SharedString, window: &mut Window, cx: &mut App) -> 
     .build(window, cx)
 }
 
-pub(super) fn administrator_badge(selector: SharedString, label_px: f32, cx: &App) -> gpui::Div {
+pub(super) fn administrator_badge(
+    selector: SharedString,
+    label_px: f32,
+    cx: &App,
+) -> gpui::Stateful<gpui::Div> {
     let label = crate::gpui_shell::config::ui_language(cx)
         .text(crate::i18n::Message::ChromeLocalAdministrator);
     div()
