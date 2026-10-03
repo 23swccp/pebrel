@@ -284,9 +284,8 @@ fn backup_restore_refreshes_an_open_command_manager(cx: &mut TestAppContext) {
     .unwrap();
     let pane = window.update(|window, cx| cx.new(|cx| SettingsPane::new(window, cx)));
     let _subscription = window.update(|window, cx| {
-        workspace.update(cx, |_, cx| {
-            cx.subscribe_in(&pane, window, NebulaWorkspace::on_settings_event)
-        })
+        workspace
+            .update(cx, |_, cx| cx.subscribe_in(&pane, window, NebulaWorkspace::on_settings_event))
     });
     pane.update(&mut window, |_, cx| cx.emit(SettingsPaneEvent::BackupRestored));
     draw(&mut window);

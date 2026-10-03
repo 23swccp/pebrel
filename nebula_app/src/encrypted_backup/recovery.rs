@@ -147,15 +147,21 @@ mod tests {
         let destination = tempfile::tempdir().unwrap();
         let original = br#"{"version":1,"commands":[]}"#;
         fs::write(destination.path().join(name), original).unwrap();
-        restore_selected_at(destination.path(), &opened, BackupSelection::default(), "correct horse")
-            .unwrap();
+        restore_selected_at(
+            destination.path(),
+            &opened,
+            BackupSelection::default(),
+            "correct horse",
+        )
+        .unwrap();
         assert_eq!(fs::read(destination.path().join(name)).unwrap(), original);
         let point =
             restore_selected_at(destination.path(), &opened, selection, "correct horse").unwrap();
         assert_eq!(fs::read(destination.path().join(name)).unwrap(), source_bytes);
         assert_eq!(fs::read(destination.path().join(history)).unwrap(), b"history fixture");
         let restored =
-            crate::saved_commands::SavedCommands::load_from(&destination.path().join(name)).unwrap();
+            crate::saved_commands::SavedCommands::load_from(&destination.path().join(name))
+                .unwrap();
         assert_eq!(restored.commands(), commands.commands());
         assert_eq!(restored.groups(), commands.groups());
         assert_eq!(restored.group_for(&saved.id), Some(group.as_str()));
@@ -200,10 +206,12 @@ mod tests {
                     },
                 ],
             };
-            let packet = encrypt_bytes(&serde_json::to_vec(&archive).unwrap(), "correct horse")
-                .unwrap();
+            let packet =
+                encrypt_bytes(&serde_json::to_vec(&archive).unwrap(), "correct horse").unwrap();
             assert!(open(&packet, "correct horse").is_err());
-            assert!(restore_selected_at(root.path(), &archive, selection, "correct horse").is_err());
+            assert!(
+                restore_selected_at(root.path(), &archive, selection, "correct horse").is_err()
+            );
             assert_eq!(fs::read(root.path().join(name)).unwrap(), original);
             assert!(!root.path().join(crate::nebula_history::history_file_names()[0]).exists());
         }
