@@ -31,7 +31,9 @@ impl NebulaWorkspace {
             let cwd = if let Some(destination) = &view.ssh_destination {
                 launch = LaunchSession::Ssh { host: destination.clone() };
                 view.remote_cwd()
-                    .or_else(|| self.remote_browser.path_for(id, destination).map(ToOwned::to_owned))
+                    .or_else(|| {
+                        self.remote_browser.path_for(id, destination).map(ToOwned::to_owned)
+                    })
                     .unwrap_or_default()
             } else {
                 // The current pane directory takes precedence over a profile's startup directory.

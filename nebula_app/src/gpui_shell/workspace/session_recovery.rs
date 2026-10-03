@@ -117,11 +117,12 @@ impl NebulaWorkspace {
             }
             let guest_directory =
                 tab_duplication::inherit_guest_directory(&mut launch_session, cwd);
-            let local_cwd = if guest_directory || matches!(launch_session, LaunchSession::Ssh { .. }) {
-                None
-            } else {
-                crate::session::valid_dir(cwd)
-            };
+            let local_cwd =
+                if guest_directory || matches!(launch_session, LaunchSession::Ssh { .. }) {
+                    None
+                } else {
+                    crate::session::valid_dir(cwd)
+                };
             let launch = match &launch_session {
                 LaunchSession::Ssh { host } => {
                     crate::gpui_shell::terminal::view::TerminalLaunch::Ssh {
