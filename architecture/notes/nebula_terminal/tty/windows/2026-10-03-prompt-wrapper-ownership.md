@@ -20,7 +20,9 @@ visual owner flag and recursion guard live in that closure's script scope.
 Restoring an old wrapper therefore restores its original owner. Re-sourcing
 reads that installed closure's owner rather than stale installation metadata.
 Existing global fields retain compatibility metadata; execution does not use
-them to choose the previous prompt. Keep the existing status and OSC logic.
+them to choose the previous prompt. Shared rendering depth lets only the outer
+wrapper publish OSC and the completed-command snapshot; inner wrappers contribute
+visual output and owner callbacks. Release depth before restoring caller status.
 
 ## Rejected alternatives
 Inferring environment names in the host does not repair prompt lifetime. A
