@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
-#[cfg(windows)]
 mod editor;
 
 struct CompletionSurface(gpui::Entity<TerminalView>);
@@ -83,9 +82,8 @@ fn git_completion_native_shell_end_to_end() {
     run_native_completion_fixture(false);
 }
 
-#[cfg(windows)]
 #[test]
-#[ignore = "requires a native Windows desktop and an isolated QA shell/config"]
+#[ignore = "requires a native desktop with the PowerShell QA editor and isolated config"]
 fn editor_completion_native_shell_end_to_end() {
     run_native_completion_fixture(true);
 }
@@ -246,6 +244,7 @@ fn run_native_completion_fixture(editor_only: bool) {
     let shell = crate::platform::shell::completion_qa_shell(&output);
     let powershell = pebrel_completions::command_context::ShellSyntax::for_program(shell.program())
         == pebrel_completions::command_context::ShellSyntax::PowerShell;
+    assert!(!editor_only || powershell, "editor-only acceptance requires the PowerShell QA shell");
     let result = Arc::new(Mutex::new(None));
     let after = result.clone();
     gpui_platform::application().with_assets(crate::gpui_shell::assets::NebulaAssets).run(move |cx| {
@@ -515,8 +514,7 @@ fn run_native_completion_fixture(editor_only: bool) {
                     assert_eq!(crate::git_completion::tests::git_output(repository.path(), &["rev-parse", "--symbolic-full-name", "native-inherit@{upstream}"]).trim(), "refs/remotes/origin/track-inline");
                     assert!(crate::git_completion::tests::git_output(repository.path(), &["for-each-ref", "--format=%(upstream)", "refs/heads/no-track"]).trim().is_empty());
                 }
-                #[cfg(windows)]
-                if demo.is_none() {
+                if powershell && demo.is_none() {
                     reports.extend(editor::run(cx, window.into(), &terminal, repository.path()).await?);
                 }
                 if demo.is_some() {
