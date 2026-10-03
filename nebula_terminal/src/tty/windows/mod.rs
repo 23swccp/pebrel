@@ -1485,6 +1485,75 @@ exit 0
         );
     }
 
+    #[test]
+    fn powershell_python_environment_conda_hook_preserves_active_prefix() {
+        // Conda.psm1 prompt management: rename the old prompt, emit its
+        // modifier through Write-Host, then call the saved prompt.
+        let hook = r#"
+$env:CONDA_PROMPT_MODIFIER = '(issue278-conda) '
+Rename-Item Function:\prompt CondaPromptBackup
+function global:prompt {
+    if ($env:CONDA_PROMPT_MODIFIER) {
+        $env:CONDA_PROMPT_MODIFIER | Write-Host -NoNewline
+    }
+    CondaPromptBackup
+}
+"#;
+        for before_startup in [true, false] {
+            let prelude = format!("{PS_PRELUDE}{}", if before_startup { hook } else { "" });
+            let checks = format!(
+                r#"
+{}
+$global:NebulaPreviousPSConsoleHostReadLine = {{ '' }}
+$initial = (@(prompt 6>&1) | ForEach-Object {{ [string]$_ }}) -join ''
+if (-not $initial.Contains('(issue278-conda) ')) {{ throw 'Conda prefix missing before ReadLine' }}
+$null = PSConsoleHostReadLine
+foreach ($powerline in @($true, $false)) {{
+    $global:ProbePowerline = $powerline
+    function global:Get-NebulaBoolSetting {{ param($key, $default); if ($key -eq 'powerline') {{ $global:ProbePowerline }} else {{ $default }} }}
+    $rendered = (@(prompt 6>&1) | ForEach-Object {{ [string]$_ }}) -join ''
+    if (-not $rendered.Contains('(issue278-conda) ')) {{ throw 'Conda prefix missing after ReadLine' }}
+    if (-not $rendered.Contains("$([char]27)]133;A")) {{ throw 'Prompt boundary missing' }}
+}}
+$env:CONDA_PROMPT_MODIFIER = ''
+$rendered = (@(prompt 6>&1) | ForEach-Object {{ [string]$_ }}) -join ''
+if ($rendered.Contains('(issue278-conda) ')) {{ throw 'Inactive Conda prefix remains' }}
+"#,
+                if before_startup { "" } else { hook },
+            );
+            run_powershell_integration_case(&prelude, &checks);
+        }
+    }
+
+    #[test]
+    fn powershell_python_environment_real_venv_activate_and_deactivate() {
+        run_powershell_integration_case(
+            PS_PRELUDE,
+            r#"
+$activate = $env:PEBREL_QA_VENV_ACTIVATE
+if (-not $activate -or -not (Test-Path -LiteralPath $activate)) { throw 'Real venv activation script is required' }
+$env:VIRTUAL_ENV_DISABLE_PROMPT = ''
+. $activate -Prompt issue278-venv
+$global:NebulaPreviousPSConsoleHostReadLine = { '' }
+$initial = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+if (-not $initial.Contains('(issue278-venv) ')) { throw 'venv prefix missing before ReadLine' }
+$null = PSConsoleHostReadLine
+$rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+if (-not $rendered.Contains('(issue278-venv) ')) { throw 'venv prefix missing after ReadLine' }
+if (-not $rendered.Contains("$([char]27)]133;A")) { throw 'Prompt boundary missing' }
+deactivate
+$null = PSConsoleHostReadLine
+$rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+if ($rendered.Contains('(issue278-venv) ') -or $rendered.Contains('() ')) { throw 'Inactive venv prefix remains' }
+$env:VIRTUAL_ENV_DISABLE_PROMPT = '1'
+. $activate -Prompt issue278-disabled
+$null = PSConsoleHostReadLine
+$rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+if ($rendered.Contains('(issue278-disabled) ')) { throw 'Disabled venv prompt changed' }
+"#,
+        );
+    }
+
     /// #80 的第二半：用户 `$PROFILE` 里的提示符（oh-my-posh/starship/手写）会
     /// 正常加载，但过去被 Nebula 的 powerline 盖掉，看起来就像 profile 没生效。
     #[test]
