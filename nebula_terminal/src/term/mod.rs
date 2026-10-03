@@ -30,8 +30,8 @@ pub mod cell;
 mod clear;
 pub mod color;
 mod damage;
-mod keyboard;
 mod input;
+mod keyboard;
 #[cfg(test)]
 mod keyboard_contract_tests;
 mod prompt;
@@ -161,7 +161,8 @@ pub fn viewport_to_point_from(origin: Line, point: Point<usize>) -> Point {
 
 pub struct Term<T> {
     redraw_anchor: redraw_anchor::RedrawAnchor,
-    input_cluster: Option<input::EmojiInput>,
+    input_cluster: Option<Box<input::EmojiInput>>,
+    input_end: Option<(Point, bool)>,
     /// Terminal focus controlling the cursor shape.
     pub is_focused: bool,
 
@@ -389,6 +390,7 @@ impl<T> Term<T> {
         Term {
             redraw_anchor: Default::default(),
             input_cluster: None,
+            input_end: None,
             inactive_grid,
             scroll_region,
             event_proxy,
@@ -734,7 +736,7 @@ impl<T> Term<T> {
 
     /// Mutable access to the raw grid data structure.
     pub fn grid_mut(&mut self) -> &mut Grid<Cell> {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         &mut self.grid
     }
 
@@ -752,7 +754,7 @@ impl<T> Term<T> {
             return;
         }
 
-        self.input_cluster = None;
+        self.reset_input_cluster();
         debug!("New num_cols is {num_cols} and num_lines is {num_lines}");
 
         // Move vi mode cursor with the content.
@@ -819,7 +821,7 @@ impl<T> Term<T> {
 
     /// Swap primary and alternate screen buffer.
     pub fn swap_alt(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         self.cancel_redraw_anchor();
         if !self.mode.contains(TermMode::ALT_SCREEN) {
             // Set alt screen cursor to the current primary screen cursor.
@@ -849,7 +851,7 @@ impl<T> Term<T> {
     /// Expects origin to be in scroll range.
     #[inline]
     fn scroll_down_relative(&mut self, origin: Line, mut lines: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Scrolling down relative: origin={origin}, lines={lines}");
 
         lines = cmp::min(lines, (self.scroll_region.end - self.scroll_region.start).0 as usize);
@@ -878,7 +880,7 @@ impl<T> Term<T> {
     /// Expects origin to be in scroll range.
     #[inline]
     fn scroll_up_relative(&mut self, origin: Line, mut lines: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Scrolling up relative: origin={origin}, lines={lines}");
 
         lines = cmp::min(lines, (self.scroll_region.end - self.scroll_region.start).0 as usize);
@@ -935,7 +937,7 @@ impl<T> Term<T> {
         if delta == 0 || delta >= self.screen_lines() {
             return;
         }
-        self.input_cluster = None;
+        self.reset_input_cluster();
         let region = Line(0)..Line(self.screen_lines() as i32);
         // 选区跟着内容走：`rotate` 的正负与内容位移同向（上滚为负）。
         let rotation = if target < cursor { delta as i32 } else { -(delta as i32) };
@@ -1144,9 +1146,7 @@ impl<T> Term<T> {
         } else {
             // Below the scrolling margin at the physical bottom, wrapping cannot
             // advance. Do not leave a placeholder pointing at a nonexistent row.
-            self.grid.cursor_cell().flags.remove(
-                Flags::WRAPLINE | Flags::LEADING_WIDE_CHAR_SPACER,
-            );
+            self.grid.cursor_cell().flags.remove(Flags::WRAPLINE | Flags::LEADING_WIDE_CHAR_SPACER);
         }
 
         if next_line >= self.scroll_region.end {
@@ -1234,7 +1234,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn decaln(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Decalnning");
 
         for line in (0..self.screen_lines()).map(Line::from) {
@@ -1250,7 +1250,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn goto(&mut self, line: i32, col: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         let line = Line(line);
         let col = Column(col);
 
@@ -1282,7 +1282,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn insert_blank(&mut self, count: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         let cursor = &self.grid.cursor;
         let bg = cursor.template.bg;
 
@@ -1329,7 +1329,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn move_forward(&mut self, cols: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Moving forward: {cols}");
         let last_column = cmp::min(self.grid.cursor.point.column + cols, self.last_column());
 
@@ -1342,7 +1342,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn move_backward(&mut self, cols: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Moving backward: {cols}");
         let column = self.grid.cursor.point.column.saturating_sub(cols);
 
@@ -1478,7 +1478,7 @@ impl<T: EventListener> Handler for Term<T> {
     /// Insert tab at cursor position.
     #[inline]
     fn put_tab(&mut self, mut count: u16) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         // A tab after the last column is the same as a linebreak.
         if self.grid.cursor.input_needs_wrap {
             self.wrapline();
@@ -1511,7 +1511,7 @@ impl<T: EventListener> Handler for Term<T> {
     /// Backspace.
     #[inline]
     fn backspace(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Backspace");
 
         if self.grid.cursor.point.column > Column(0) {
@@ -1526,7 +1526,7 @@ impl<T: EventListener> Handler for Term<T> {
     /// Carriage return.
     #[inline]
     fn carriage_return(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Carriage return");
         let new_col = 0;
         let line = self.grid.cursor.point.line.0 as usize;
@@ -1538,7 +1538,7 @@ impl<T: EventListener> Handler for Term<T> {
     /// Linefeed.
     #[inline]
     fn linefeed(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Linefeed");
         let next = self.grid.cursor.point.line + 1;
         if next == self.scroll_region.end {
@@ -1601,14 +1601,12 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn scroll_up(&mut self, lines: usize) {
-        self.input_cluster = None;
         let origin = self.scroll_region.start;
         self.scroll_up_relative(origin, lines);
     }
 
     #[inline]
     fn scroll_down(&mut self, lines: usize) {
-        self.input_cluster = None;
         let origin = self.scroll_region.start;
         self.scroll_down_relative(origin, lines);
     }
@@ -1637,7 +1635,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn erase_chars(&mut self, count: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         let cursor = &self.grid.cursor;
 
         trace!("Erasing chars: count={}, col={}", count, cursor.point.column);
@@ -1657,7 +1655,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn delete_chars(&mut self, count: usize) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         let columns = self.columns();
         let cursor = &self.grid.cursor;
         let bg = cursor.template.bg;
@@ -1687,7 +1685,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn move_backward_tabs(&mut self, count: u16) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Moving backward {count} tabs");
 
         let old_col = self.grid.cursor.point.column.0;
@@ -1713,7 +1711,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn move_forward_tabs(&mut self, count: u16) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Moving forward {count} tabs");
 
         let num_cols = self.columns();
@@ -1748,7 +1746,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn restore_cursor_position(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Restoring cursor position");
 
         self.damage_cursor();
@@ -1758,7 +1756,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn clear_line(&mut self, mode: ansi::LineClearMode) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Clearing line: {mode:?}");
 
         let cursor = &self.grid.cursor;
@@ -1874,7 +1872,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn clear_screen(&mut self, mode: ansi::ClearMode) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         self.clear_screen_contents(mode);
     }
 
@@ -1894,7 +1892,7 @@ impl<T: EventListener> Handler for Term<T> {
     /// Reset all important fields in the term struct.
     #[inline]
     fn reset_state(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         self.cancel_redraw_anchor();
         if self.mode.contains(TermMode::ALT_SCREEN) {
             mem::swap(&mut self.grid, &mut self.inactive_grid);
@@ -1926,7 +1924,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn reverse_index(&mut self) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         trace!("Reversing index");
         // If cursor is at the top.
         if self.grid.cursor.point.line == self.scroll_region.start {
@@ -2187,7 +2185,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn set_mode(&mut self, mode: ansi::Mode) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         let mode = match mode {
             ansi::Mode::Named(mode) => mode,
             ansi::Mode::Unknown(mode) => {
@@ -2205,7 +2203,7 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn unset_mode(&mut self, mode: ansi::Mode) {
-        self.input_cluster = None;
+        self.reset_input_cluster();
         let mode = match mode {
             ansi::Mode::Named(mode) => mode,
             ansi::Mode::Unknown(mode) => {
@@ -2283,14 +2281,12 @@ impl<T: EventListener> Handler for Term<T> {
 
     #[inline]
     fn configure_charset(&mut self, index: CharsetIndex, charset: StandardCharset) {
-        self.input_cluster = None;
         trace!("Configuring charset {index:?} as {charset:?}");
         self.grid.cursor.charsets[index] = charset;
     }
 
     #[inline]
     fn set_active_charset(&mut self, index: CharsetIndex) {
-        self.input_cluster = None;
         trace!("Setting active charset {index:?}");
         self.active_charset = index;
     }

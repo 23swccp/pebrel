@@ -1,6 +1,6 @@
 //! Streaming emoji cell allocation. Ordinary text keeps the existing VT placement.
 
-use unicode_properties::UnicodeEmoji as _;
+use unicode_properties::{UnicodeEmoji as _, emoji::is_regional_indicator};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
@@ -8,9 +8,6 @@ use super::{Cell, Dimensions, EventListener, Flags, Point, Term, TermMode};
 use crate::vte::ansi::Handler as _;
 
 pub(super) struct EmojiInput {
-    cell: Point,
-    next: Point,
-    wrap: bool,
     segmenter: GraphemeCursor,
     bytes: usize,
     context: String,
@@ -20,7 +17,7 @@ pub(super) struct EmojiInput {
 }
 
 impl EmojiInput {
-    fn new(c: char, cell: Point, next: Point, wrap: bool) -> Option<Self> {
+    fn new(c: char) -> Option<Self> {
         // The only ASCII emoji bases are the standardized keycap bases.
         if (c.is_ascii() && !matches!(c, '#' | '*' | '0'..='9')) || !c.is_emoji_char() {
             return None;
@@ -32,9 +29,6 @@ impl EmojiInput {
         let result = segmenter.next_boundary(text, 0);
         debug_assert_eq!(result, Err(GraphemeIncomplete::NextChunk));
         Some(Self {
-            cell,
-            next,
-            wrap,
             segmenter,
             bytes: text.len(),
             context: String::new(),
@@ -87,7 +81,16 @@ fn sequence_width(first: char, tail: &[char]) -> usize {
     std::str::from_utf8(&buffer[..len]).unwrap().width()
 }
 
+impl<T> Term<T> {
+    #[inline]
+    pub(super) fn reset_input_cluster(&mut self) {
+        self.input_cluster = None;
+        self.input_end = None;
+    }
+}
+
 impl<T: EventListener> Term<T> {
+    #[inline]
     pub(super) fn input_character(&mut self, c: char) {
         // Number of cells the char will occupy.
         let width = match c.width() {
@@ -98,7 +101,7 @@ impl<T: EventListener> Term<T> {
         if !c.is_ascii() && self.extend_emoji_input(c, width) {
             return;
         }
-        self.input_cluster = None;
+        self.reset_input_cluster();
 
         // Preserve the existing placement of standalone combining characters.
         if width == 0 {
@@ -135,9 +138,7 @@ impl<T: EventListener> Term<T> {
             }
         }
 
-        let glyph_point;
         if width == 1 {
-            glyph_point = self.grid.cursor.point;
             self.write_at_cursor(c);
         } else {
             if self.grid.cursor.point.column + 1 >= columns {
@@ -157,7 +158,6 @@ impl<T: EventListener> Term<T> {
                 }
             }
 
-            glyph_point = self.grid.cursor.point;
             // Write full width glyph to current cursor cell.
             self.grid.cursor.template.flags.insert(Flags::WIDE_CHAR);
             self.write_at_cursor(c);
@@ -175,20 +175,37 @@ impl<T: EventListener> Term<T> {
         } else {
             self.grid.cursor.input_needs_wrap = true;
         }
-        self.input_cluster = EmojiInput::new(
-            self.grid[glyph_point].c,
-            glyph_point,
-            self.grid.cursor.point,
-            self.grid.cursor.input_needs_wrap,
-        );
+        self.input_end = Some((self.grid.cursor.point, self.grid.cursor.input_needs_wrap));
     }
 
     fn extend_emoji_input(&mut self, c: char, char_width: usize) -> bool {
-        let Some(mut cluster) = self.input_cluster.take() else { return false };
-        if cluster.next != self.grid.cursor.point || cluster.wrap != self.grid.cursor.input_needs_wrap {
+        // Ordinary letters/CJK cannot be a positive-width emoji continuation.
+        // No Emoji property lookup or segmenter initialization on this path.
+        if self.input_cluster.is_none()
+            && char_width > 0
+            && c.is_alphanumeric()
+            && !is_regional_indicator(c)
+        {
             return false;
         }
-        let cell = &self.grid[cluster.cell];
+        let Some((next, wrap)) = self.input_end else { return false };
+        if next != self.grid.cursor.point || wrap != self.grid.cursor.input_needs_wrap {
+            return false;
+        }
+        let mut point = self.grid.cursor.point;
+        if !wrap {
+            point.column.0 = point.column.saturating_sub(1);
+        }
+        if self.grid[point].flags.contains(Flags::WIDE_CHAR_SPACER) {
+            point.column.0 = point.column.saturating_sub(1);
+        }
+        let cell = &self.grid[point];
+        let mut cluster = if let Some(cluster) = self.input_cluster.take() {
+            cluster
+        } else {
+            let Some(cluster) = EmojiInput::new(cell.c) else { return false };
+            Box::new(cluster)
+        };
         let old_width = if cell.flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 };
         let width = if char_width > 0 {
             if !c.is_emoji_char() {
@@ -214,18 +231,17 @@ impl<T: EventListener> Term<T> {
         if !cluster.continues(c, cell) {
             return false;
         }
-        self.grid[cluster.cell].push_zerowidth(c);
+        self.grid[point].push_zerowidth(c);
         if width != old_width {
-            self.resize_emoji_cell(&mut cluster.cell, width);
+            self.resize_emoji_cell(&mut point, width);
         }
-        self.damage.damage_point(Point::new(cluster.cell.line.0 as usize, cluster.cell.column));
+        self.damage.damage_point(Point::new(point.line.0 as usize, point.column));
         if char_width > 0 {
             cluster.graphic = c;
             cluster.joined = true;
         }
         cluster.last = c;
-        cluster.next = self.grid.cursor.point;
-        cluster.wrap = self.grid.cursor.input_needs_wrap;
+        self.input_end = Some((self.grid.cursor.point, self.grid.cursor.input_needs_wrap));
         self.input_cluster = Some(cluster);
         true
     }
