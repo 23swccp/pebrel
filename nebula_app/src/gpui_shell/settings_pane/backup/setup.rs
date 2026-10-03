@@ -158,14 +158,16 @@ impl SettingsPane {
                     |(i, (protocol, nutstore, title, hint, icon))| {
                         Button::new(("backup-provider", i))
                             .debug_selector(move || format!("backup-provider-{i}"))
+                            .map(|button| {
+                                crate::gpui_shell::widgets::settings_button(button, false, cx)
+                            })
+                            // Provider rows contain a title and a wrapping description.
+                            // Apply their geometry after the shared single-line button style.
                             .w_full()
                             .h_auto()
                             .py_3()
                             .px_4()
                             .justify_start()
-                            .map(|button| {
-                                crate::gpui_shell::widgets::settings_button(button, false, cx)
-                            })
                             .selected(provider(&self.backup_ui.draft) == title)
                             .disabled(self.backup_busy)
                             .child(Icon::default().path(icon).size(px(18.0)).flex_shrink_0())
@@ -177,11 +179,16 @@ impl SettingsPane {
                                     .items_start()
                                     .child(
                                         div()
+                                            .debug_selector(move || {
+                                                format!("backup-provider-title-{i}")
+                                            })
                                             .text_size(px(14.0))
                                             .font_medium()
                                             .child(l.text(title)),
                                     )
-                                    .child(caption(l.text(hint), cx)),
+                                    .child(caption(l.text(hint), cx).debug_selector(move || {
+                                        format!("backup-provider-hint-{i}")
+                                    })),
                             )
                             .when(provider(&self.backup_ui.draft) == title, |b| {
                                 b.child(Icon::default().path(icons::CHECK).size(px(16.0)))
