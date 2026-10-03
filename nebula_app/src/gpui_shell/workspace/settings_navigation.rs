@@ -1,9 +1,7 @@
 use gpui::{App, AppContext as _, Context, Focusable as _, Window};
 use nebula_settings::TabsPositionName;
 
-use super::{
-    NebulaWorkspace, SettingsPane, SidebarActivity, TabPresentation, tab_reveal_instant,
-};
+use super::{NebulaWorkspace, SettingsPane, SidebarActivity, TabPresentation, tab_reveal_instant};
 
 #[cfg(all(test, feature = "gpui-test-support"))]
 mod ui_tests;
