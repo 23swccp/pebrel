@@ -1,6 +1,8 @@
 name: Issue 278 PowerShell environment prompt probe
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/issue-278-python-env]
 permissions:
   contents: read
 jobs:
