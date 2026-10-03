@@ -60,7 +60,11 @@ impl SettingsPane {
             Message::CloudPassphrase,
             Message::CloudScope,
         ];
-        let progress = h_flex()
+        let compact = window.viewport_size().width < px(960.0);
+        let progress = div()
+            .debug_selector(|| "backup-wizard-progress".into())
+            .grid()
+            .grid_cols(if compact { 2 } else { 4 })
             .flex_shrink_0()
             .w_full()
             .px_6()
@@ -70,6 +74,7 @@ impl SettingsPane {
             .border_color(cx.theme().border)
             .children(steps.into_iter().enumerate().map(|(i, label)| {
                 h_flex()
+                    .debug_selector(move || format!("backup-wizard-step-{i}"))
                     .flex_1()
                     .min_w_0()
                     .gap_2()
@@ -106,8 +111,18 @@ impl SettingsPane {
                                 div().child((i + 1).to_string()).into_any_element()
                             }),
                     )
-                    .child(l.text(label))
-                    .when(i < 3, |row| row.child(div().flex_1().h(px(1.0)).bg(cx.theme().border)))
+                    .child(
+                        div()
+                            .debug_selector(move || format!("backup-wizard-step-label-{i}"))
+                            .flex_1()
+                            .min_w_0()
+                            .child(l.text(label)),
+                    )
+                    .when(i < 3 && !compact, |row| {
+                        row.child(
+                            div().w(px(12.0)).flex_shrink_0().h(px(1.0)).bg(cx.theme().border),
+                        )
+                    })
             }));
         let (title, lead) = match step {
             1 => (Message::BackupFlowChooseStorage, Message::BackupFlowChooseStorageHint),

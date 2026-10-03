@@ -375,6 +375,35 @@ fn backup_provider_rows_contain_titles_and_wrapped_hints(cx: &mut gpui::TestAppC
             for width in [600.0, 800.0, 1280.0] {
                 cx.simulate_resize(gpui::size(px(width), px(1400.0)));
                 draw(cx);
+                let progress = cx.debug_bounds("backup-wizard-progress").unwrap();
+                let mut steps = Vec::new();
+                for (step_selector, label_selector) in [
+                    ("backup-wizard-step-0", "backup-wizard-step-label-0"),
+                    ("backup-wizard-step-1", "backup-wizard-step-label-1"),
+                    ("backup-wizard-step-2", "backup-wizard-step-label-2"),
+                    ("backup-wizard-step-3", "backup-wizard-step-label-3"),
+                ] {
+                    let step = cx.debug_bounds(step_selector).unwrap();
+                    let label = cx.debug_bounds(label_selector).unwrap();
+                    assert!(step.left() >= progress.left() && step.right() <= progress.right());
+                    assert!(
+                        label.left() >= step.left() && label.right() <= step.right(),
+                        "step label escapes its column: {label:?}, {step:?}"
+                    );
+                    assert!(
+                        label.top() >= step.top() && label.bottom() <= step.bottom(),
+                        "step label is clipped vertically"
+                    );
+                    steps.push(step);
+                }
+                for (i, step) in steps.iter().enumerate() {
+                    for other in &steps[i + 1..] {
+                        assert!(
+                            step.right() <= other.left() || step.bottom() <= other.top(),
+                            "step labels overlap adjacent steps: {step:?}, {other:?}"
+                        );
+                    }
+                }
                 let mut previous_bottom = None;
                 let mut wrapped = false;
                 for (row_selector, title_selector, hint_selector) in [
