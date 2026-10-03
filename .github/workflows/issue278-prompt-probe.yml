@@ -9,6 +9,9 @@ jobs:
   powershell:
     runs-on: windows-2022
     timeout-minutes: 25
+    env:
+      CARGO_TARGET_DIR: target/ci
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,4 +36,4 @@ jobs:
           save-if: "false"
       - name: Execute the production PowerShell integration helper
         shell: pwsh
-        run: cargo test --locked --profile ci -p nebula_terminal powershell_python_environment -- --nocapture
+        run: cargo test --locked -p nebula_terminal powershell_python_environment -- --nocapture
