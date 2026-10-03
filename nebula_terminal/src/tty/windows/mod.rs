@@ -1598,7 +1598,12 @@ try {
     if ([regex]::Matches($completePrompt, 'SetUserVar=pebrel_shell=').Count -ne 1) { throw 'Nested prompt published extra shell identities' }
     if ([regex]::Matches($completePrompt, '\x1b\]2;NEBULA\|').Count -ne 1) { throw 'Nested prompt published extra titles' }
     if ($global:NebulaLastCommandSucceeded -or $global:NebulaLastCommandExitCode -ne 7) { throw 'Nested prompt overwrote completion snapshot' }
-    if ($activeSucceeded -or $activeCode -ne 7) { throw 'Prompt changed caller failure status' }
+    # Ordinary functions can restore $? internally while the caller resets it.
+    # Compare the same documented function-call semantics, without changing prompt ABI.
+    function Probe-CallerFailureStatus { Write-Error '' -ErrorAction Ignore }
+    $referenceOutput = Probe-CallerFailureStatus 6>&1
+    $referenceSucceeded = $?
+    if ($activeSucceeded -ne $referenceSucceeded -or $activeCode -ne 7) { throw 'Prompt changed caller status semantics or native exit code' }
     if ($global:NebulaPromptRenderDepth -ne 0) { throw 'Prompt rendering depth leaked' }
     if (-not $rendered.Contains("$([char]27)]133;A")) { throw 'Prompt boundary missing' }
     deactivate
