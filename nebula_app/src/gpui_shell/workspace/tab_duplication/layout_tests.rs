@@ -148,7 +148,6 @@ fn duplicate_rebuilds_nested_mixed_layout_with_fresh_sessions(cx: &mut TestAppCo
                 3
             );
             workspace.close_tab(0, window, cx);
-            workspace.close_tab(0, window, cx);
             workspace
         });
         Root::new(workspace, window, cx)
