@@ -4,9 +4,9 @@ use crate::index::{Column, Line};
 use crate::render::{RenderSnapshot, SnapshotConfig};
 use crate::term::{Config, test::TermSize};
 use crate::vte::ansi::{Handler as _, Processor};
-use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 use unicode_properties::UnicodeEmoji as _;
 use unicode_segmentation::UnicodeSegmentation as _;
+use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 const EMOJI: &[&str] = &["👨‍👩‍👧", "🏳️‍🌈", "❤️‍🔥", "🐦‍⬛", "🙂‍↔️", "👍🏽", "🇨🇳"];
 
