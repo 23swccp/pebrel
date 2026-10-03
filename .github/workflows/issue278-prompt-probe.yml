@@ -36,4 +36,4 @@ jobs:
           save-if: "false"
       - name: Execute the production PowerShell integration helper
         shell: pwsh
-        run: cargo test --locked -p nebula_terminal powershell_python_environment -- --nocapture
+        run: cargo test --locked -p nebula_terminal powershell_ -- --nocapture

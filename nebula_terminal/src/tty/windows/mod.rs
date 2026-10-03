@@ -406,13 +406,19 @@ function global:Test-NebulaUserPrompt {
 
 # 脚本可能在已有集成之后被 source。只在第一次安装时保存原 prompt，
 # 之后重载 Nebula 脚本也不能把自己的 wrapper 当成“用户 prompt”递归调用。
+$existingPrompt = Get-Command prompt -CommandType Function -ErrorAction SilentlyContinue
 if (-not $global:NebulaPromptInstalled) {
-    $existingPrompt = Get-Command prompt -CommandType Function -ErrorAction SilentlyContinue
     $global:NebulaPreviousPrompt = if ($existingPrompt) { $existingPrompt.ScriptBlock } else { $null }
     # 视觉归属。用户已经有提示符时，Nebula 只补协议标记，不画自己的 powerline：
     # 终端只负责补充协议标记，不替 shell 决定提示符外观。
     $global:NebulaUserOwnsPrompt = Test-NebulaUserPrompt $global:NebulaPreviousPrompt
     $global:NebulaPromptInstalled = $true
+} elseif ($existingPrompt -and $existingPrompt.ScriptBlock.Module -and
+    $existingPrompt.ScriptBlock.ToString().Contains('NebulaPreviousPrompt')) {
+    # Re-sourcing after venv deactivation must retain the restored closure's owner.
+    $variables = $existingPrompt.ScriptBlock.Module.SessionState.PSVariable
+    $global:NebulaPreviousPrompt = $variables.GetValue('NebulaPreviousPrompt')
+    $global:NebulaUserOwnsPrompt = [bool]$variables.GetValue('NebulaUserOwnsPrompt')
 }
 
 # A shell instance owns its completion context; children must get a new token.
@@ -421,7 +427,7 @@ if (-not $global:PebrelShellToken) {
         "pwsh:$PID`:$([Guid]::NewGuid().ToString('N'))"))
 }
 
-function global:prompt {
+$global:NebulaPromptTemplate = {
     # Same principle as Oh My Posh: prompt rendering may execute external
     # commands, so preserve the previous command status. Errors inside the
     # prompt must stay silent — but ONLY inside: assigning here is scoped to
@@ -448,21 +454,21 @@ function global:prompt {
     # 分两种：用户自己的提示符继续可见（Nebula 只在它前面补协议标记），内置的
     # 默认提示符才丢掉、由 Nebula 渲染——否则两个提示符会叠在一起。
     $userPrompt = ''
-    if ($global:NebulaPreviousPrompt -and -not $global:NebulaPreviousPromptRunning) {
-        $global:NebulaPreviousPromptRunning = $true
+    if ($script:NebulaPreviousPrompt -and -not $script:NebulaPreviousPromptRunning) {
+        $script:NebulaPreviousPromptRunning = $true
         try {
             $global:LASTEXITCODE = $originalLastExitCode
             if (-not $originalDollarQuestion) {
                 Write-Error '' -ErrorAction Ignore
             }
-            $previousOutput = & $global:NebulaPreviousPrompt
-            if ($global:NebulaUserOwnsPrompt) {
+            $previousOutput = & $script:NebulaPreviousPrompt
+            if ($script:NebulaUserOwnsPrompt) {
                 # 提示符函数可以返回多个对象，宿主是按顺序拼起来显示的。
                 $userPrompt = (@($previousOutput) | ForEach-Object { [string]$_ }) -join ''
             }
         } catch {
         } finally {
-            $global:NebulaPreviousPromptRunning = $false
+            $script:NebulaPreviousPromptRunning = $false
         }
     }
 
@@ -551,9 +557,19 @@ function global:prompt {
     }
 }
 
-# 重新安装用的引用：下面的 ReadLine wrapper 发现 prompt 被别人换掉时，用它把
-# Nebula 的 wrapper 包回去。
-$global:NebulaPromptScriptBlock = (Get-Command prompt -CommandType Function).ScriptBlock
+# Each saved prompt retains its original owner when an environment restores it.
+function global:Install-NebulaPrompt {
+    param([scriptblock]$PreviousPrompt, [bool]$UserOwnsPrompt)
+
+    $NebulaPreviousPrompt = $PreviousPrompt
+    $NebulaUserOwnsPrompt = $UserOwnsPrompt
+    $NebulaPreviousPromptRunning = $false
+    $global:NebulaPreviousPrompt = $PreviousPrompt
+    $global:NebulaUserOwnsPrompt = $UserOwnsPrompt
+    $global:NebulaPromptScriptBlock = $global:NebulaPromptTemplate.GetNewClosure()
+    Set-Item -Path function:global:prompt -Value $global:NebulaPromptScriptBlock
+}
+Install-NebulaPrompt $global:NebulaPreviousPrompt $global:NebulaUserOwnsPrompt
 
 # Build a spec-correct file:// URI from a Windows path for OSC 8 hyperlinks.
 # RFC 3986: escape every segment (UTF-8 + surrogate pairs via EscapeDataString),
@@ -746,9 +762,7 @@ if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {
             $installed = Get-Command prompt -CommandType Function -ErrorAction SilentlyContinue
             if ($global:NebulaPromptScriptBlock -and $installed -and
                 -not $installed.ScriptBlock.ToString().Contains('NebulaPreviousPrompt')) {
-                $global:NebulaPreviousPrompt = $installed.ScriptBlock
-                $global:NebulaUserOwnsPrompt = Test-NebulaUserPrompt $installed.ScriptBlock
-                Set-Item -Path function:global:prompt -Value $global:NebulaPromptScriptBlock
+                Install-NebulaPrompt $installed.ScriptBlock (Test-NebulaUserPrompt $installed.ScriptBlock)
             }
         } catch {}
 
@@ -1527,31 +1541,69 @@ if ($rendered.Contains('(issue278-conda) ')) {{ throw 'Inactive Conda prefix rem
 
     #[test]
     fn powershell_python_environment_real_venv_activate_and_deactivate() {
-        run_powershell_integration_case(
-            PS_PRELUDE,
-            r#"
+        for user_prompt in [false, true] {
+            let prelude = format!(
+                "{PS_PRELUDE}$global:ExpectedOriginalUser = ${user_prompt}\n$global:ProbeBootstrap = {{\n{NEBULA_PROMPT_PS1}\n}}\n{}",
+                if user_prompt {
+                    "function global:prompt { 'ORIGINAL-USER-PROMPT> ' }\n"
+                } else {
+                    ""
+                },
+            );
+            run_powershell_integration_case(
+                &prelude,
+                r#"
 $activate = $env:PEBREL_QA_VENV_ACTIVATE
-if (-not $activate -or -not (Test-Path -LiteralPath $activate)) { throw 'Real venv activation script is required' }
-$env:VIRTUAL_ENV_DISABLE_PROMPT = ''
-. $activate -Prompt issue278-venv
-$global:NebulaPreviousPSConsoleHostReadLine = { '' }
-$initial = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
-if (-not $initial.Contains('(issue278-venv) ')) { throw 'venv prefix missing before ReadLine' }
-$null = PSConsoleHostReadLine
-$rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
-if (-not $rendered.Contains('(issue278-venv) ')) { throw 'venv prefix missing after ReadLine' }
-if (-not $rendered.Contains("$([char]27)]133;A")) { throw 'Prompt boundary missing' }
-deactivate
-$null = PSConsoleHostReadLine
-$rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
-if ($rendered.Contains('(issue278-venv) ') -or $rendered.Contains('() ')) { throw 'Inactive venv prefix remains' }
-$env:VIRTUAL_ENV_DISABLE_PROMPT = '1'
-. $activate -Prompt issue278-disabled
-$null = PSConsoleHostReadLine
-$rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
-if ($rendered.Contains('(issue278-disabled) ')) { throw 'Disabled venv prompt changed' }
+$temporaryVenv = $null
+if (-not $activate) {
+    $temporaryVenv = Join-Path $env:TEMP "pebrel-venv-test-$PID"
+    & python -m venv $temporaryVenv
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create real Python venv' }
+    $activate = Join-Path $temporaryVenv 'Scripts\Activate.ps1'
+}
+try {
+    if (-not (Test-Path -LiteralPath $activate)) { throw 'Real venv activation script is required' }
+    $expected = if ($global:ExpectedOriginalUser) { 'ORIGINAL-USER-PROMPT> ' } else { '❯' }
+    $env:VIRTUAL_ENV_DISABLE_PROMPT = ''
+    . $activate -Prompt issue278-venv
+    $global:NebulaPreviousPSConsoleHostReadLine = { '' }
+    $initial = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+    if (-not $initial.Contains('(issue278-venv) ')) { throw 'venv prefix missing before ReadLine' }
+    $null = PSConsoleHostReadLine
+    $rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+    if (-not $rendered.Contains('(issue278-venv) ')) { throw 'venv prefix missing after ReadLine' }
+    if (-not $rendered.Contains($expected)) { throw 'Original prompt lost during venv activation' }
+    if (-not $rendered.Contains("$([char]27)]133;A")) { throw 'Prompt boundary missing' }
+    deactivate
+    $null = PSConsoleHostReadLine
+    $rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+    if ($rendered.Contains('(issue278-venv) ') -or $rendered.Contains('() ')) { throw 'Inactive venv prefix remains' }
+    if (-not $rendered.Contains($expected)) { throw 'Original prompt not restored after deactivate' }
+    & $global:ProbeBootstrap
+    $rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+    if ($rendered.Contains('(issue278-venv) ') -or $rendered.Contains('() ')) { throw 'Re-source revived an inactive venv' }
+    if (-not $rendered.Contains($expected)) { throw 'Re-source replaced restored prompt owner' }
+    $env:VIRTUAL_ENV_DISABLE_PROMPT = '1'
+    . $activate -Prompt issue278-disabled
+    $null = PSConsoleHostReadLine
+    $rendered = (@(prompt 6>&1) | ForEach-Object { [string]$_ }) -join ''
+    if ($rendered.Contains('(issue278-disabled) ')) { throw 'Disabled venv prompt changed' }
+    if (-not $rendered.Contains($expected)) { throw 'Disabled venv replaced original prompt' }
+    $capture = New-Object System.IO.StringWriter
+    $originalOutput = [Console]::Out
+    try {
+        [Console]::SetOut($capture)
+        & $env:COMSPEC /d /c 'exit 7'
+        $rendered = prompt
+        $code = $LASTEXITCODE
+    } finally { [Console]::SetOut($originalOutput) }
+    if ($code -ne 7 -or -not $capture.ToString().Contains("$([char]27)]133;D;7")) { throw 'Native failure status changed by prompt' }
+} finally {
+    if ($temporaryVenv) { Remove-Item -LiteralPath $temporaryVenv -Recurse -Force -ErrorAction SilentlyContinue }
+}
 "#,
-        );
+            );
+        }
     }
 
     /// #80 的第二半：用户 `$PROFILE` 里的提示符（oh-my-posh/starship/手写）会
