@@ -16,7 +16,8 @@ backup destinations. Both the current archive and command store use version 1.
 Include the exact saved_commands.json file in the existing opt-in CommandHistory
 category. Label the category as commands and history. Reuse the command store's
 parser and validation before restoring. Preserve the stored bytes, encryption,
-atomic writes, selective restore and encrypted recovery-point semantics.
+atomic writes, selective restore and encrypted recovery-point semantics. A restore
+or undo notification reloads an open command manager, including its group selection.
 
 ## Rejected alternatives
 A separate category would introduce a new persisted selection field for the same
