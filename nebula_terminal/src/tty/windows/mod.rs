@@ -1259,7 +1259,10 @@ mod test {
         let start = NEBULA_PROMPT_PS1[toggle..].find("]133;C").expect("OSC command start");
 
         assert!(done < toggle, "command completion must not depend on the visual branch");
-        assert!(prompt < toggle + start, "the powerline-off prompt and ReadLine wrapper must both stay");
+        assert!(
+            prompt < toggle + start,
+            "the powerline-off prompt and ReadLine wrapper must both stay"
+        );
     }
 
     #[test]
