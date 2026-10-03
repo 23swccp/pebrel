@@ -39,7 +39,7 @@ fn duplicate_rebuilds_nested_mixed_layout_with_fresh_sessions(cx: &mut TestAppCo
     let original = TabSession {
         cwd: cwd.clone(),
         custom_name: Some("Mixed workspace".into()),
-        color: Some(crate::display::color::Rgb { r: 12, g: 34, b: 56 }),
+        color: Some(crate::display::color::Rgb::new(12, 34, 56)),
         launch: Some(launches[0].clone()),
         layout: Some(LayoutSession::Split {
             axis: SplitAxis::LeftRight,
@@ -54,7 +54,7 @@ fn duplicate_rebuilds_nested_mixed_layout_with_fresh_sessions(cx: &mut TestAppCo
         }),
         active_pane: 1,
     };
-    let (_, mut window) = cx.add_window_view(|window, cx| {
+    let (_, window) = cx.add_window_view(|window, cx| {
         let workspace = cx.new(|cx| {
             let mut workspace = NebulaWorkspace::new(
                 window,
