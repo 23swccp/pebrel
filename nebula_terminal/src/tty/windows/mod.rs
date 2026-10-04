@@ -441,6 +441,7 @@ $global:NebulaPromptTemplate = {
         $ErrorActionPreference = 'SilentlyContinue'
         if ($outermost) {
             [Console]::Write("$([char]27)]1337;SetUserVar=pebrel_shell=$global:PebrelShellToken$([char]7)")
+            if ($global:PebrelCompletionInputReady) { [Console]::Write("$([char]27)]1337;SetUserVar=pebrel_editor_ready=$global:PebrelEditorReady$([char]7)") }
             $global:NebulaPromptCount = [int]$global:NebulaPromptCount + 1
             $global:NebulaLastCommandSucceeded = $originalDollarQuestion
             $global:NebulaLastCommandExitCode = $originalLastExitCode
@@ -808,6 +809,8 @@ if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {
                 }
             } catch {}
             $owner = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($global:PebrelShellToken))
+            $input64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($owner + "`n" + $line))
+            [Console]::Write("$([char]27)]1337;SetUserVar=pebrel_input=$input64$([char]7)")
             $scopeLine64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($owner + "`n" + $scopeLine))
             [Console]::Write("$([char]27)]1337;SetUserVar=pebrel_command=$scopeLine64$([char]7)")
             [Console]::Write("$([char]27)]133;C$([char]7)")
@@ -817,7 +820,8 @@ if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) {
 }
 Clear-Host
 "#,
-    include_str!("../connection.ps1")
+    include_str!("../connection.ps1"),
+    include_str!("../completion.ps1")
 );
 
 /// Write `contents` to `path` only when it differs from what's already there.
@@ -831,9 +835,19 @@ fn write_if_changed(path: &std::path::Path, contents: &[u8]) -> bool {
     }
 }
 
+fn integration_script_path(name: &str) -> std::path::PathBuf {
+    if let Some(root) = std::env::var_os("PEBREL_CONFIG_DIR") {
+        let directory = std::path::PathBuf::from(root).join("shell-integration");
+        if directory.is_absolute() && std::fs::create_dir_all(&directory).is_ok() {
+            return directory.join(name);
+        }
+    }
+    std::env::temp_dir().join(name)
+}
+
 /// Write the Nebula prompt script to a temp file, returning its path.
 fn nebula_prompt_script_path() -> Option<std::path::PathBuf> {
-    let path = std::env::temp_dir().join("pebrel_prompt.ps1");
+    let path = integration_script_path("pebrel_prompt.ps1");
     // NOTE: do NOT touch the theme bridge file here. The UI process owns it
     // (written with the restored/selected theme); stamping a default from the
     // spawn path used to reset the powerline palette on every new tab.
@@ -952,6 +966,7 @@ __nebula_precmd() {
     NEBULA_CMD_STATUS=$? NEBULA_PIPE_STATUS=("${PIPESTATUS[@]}")
     local cmd_status="$NEBULA_CMD_STATUS" end_ms=""
     printf '\033]1337;SetUserVar=pebrel_shell=%s\007' "$__pebrel_shell_token"
+    if typeset -f __pebrel_editor_ready_report >/dev/null; then __pebrel_editor_ready_report; fi
 
     if [[ -n ${NEBULA_COMMAND_START_MS-} ]]; then
         end_ms="$(__nebula_now_ms)"
@@ -1043,7 +1058,7 @@ fi
 "#;
 
 fn nebula_bash_rc_path() -> Option<std::path::PathBuf> {
-    let path = std::env::temp_dir().join("pebrel_bashrc");
+    let path = integration_script_path("pebrel_bashrc");
     let script = format!("{NEBULA_BASH_RC}\n{}", super::connection_shell());
     write_if_changed(&path, script.as_bytes()).then_some(path)
 }
