@@ -314,7 +314,7 @@ pub(super) async fn run(
                     let visible =
                         term.grid().display_iter().map(|cell| cell.cell.c).collect::<String>();
                     visible.contains(&expected)
-                        && crate::display::nebula_input_from_raw_grid(
+                        && crate::display::nebula_prompt_line_from_raw_grid(
                             &term,
                             term.grid().cursor.point,
                             "",
