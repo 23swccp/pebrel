@@ -20,6 +20,11 @@ use std::{
 
 const GPU_LIMIT: u64 = 64 * 1024 * 1024;
 
+fn is_foreground(native: isize) -> bool {
+    use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
+    native != 0 && unsafe { GetForegroundWindow() == HWND(native as *mut _) }
+}
+
 pub(super) struct TerminalEffect {
     view: WeakEntity<TerminalView>,
     config: TerminalEffects,
@@ -140,7 +145,7 @@ impl TerminalEffect {
     fn permitted(&self, cx: &App) -> bool {
         use windows::Win32::{
             Foundation::HWND,
-            UI::WindowsAndMessaging::{GetForegroundWindow, IsIconic, IsWindowVisible},
+            UI::WindowsAndMessaging::{IsIconic, IsWindowVisible},
         };
         if !self.config.enabled
             || self.failed
@@ -162,7 +167,7 @@ impl TerminalEffect {
             IsWindowVisible(hwnd).as_bool()
                 && !IsIconic(hwnd).as_bool()
                 && (self.config.animation == EffectAnimation::Always
-                    || (GetForegroundWindow() == hwnd && view.effect_pane_focused()))
+                    || (is_foreground(self.native) && view.effect_pane_focused()))
         }
     }
 
@@ -172,6 +177,9 @@ impl TerminalEffect {
             UI::WindowsAndMessaging::{IsIconic, IsWindowVisible},
         };
         let hwnd = HWND(self.native as *mut _);
+        if !is_foreground(self.native) {
+            self.history.unfocus();
+        }
         let visible = self.view.upgrade().is_some_and(|view| view.read(cx).effect_output_visible())
             && unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() };
         if !visible {
@@ -385,7 +393,8 @@ pub(super) fn paint(
                     Bounds::new(window.pixel_snap_point(bounds.origin), bounds.size),
                     scale,
                     cursor,
-                    focused && window.is_window_active(),
+                    // WM_ACTIVATE 状态在非输入桌面上也可能为真；与动画门控共用前台事实。
+                    focused && is_foreground(this.native),
                     palette,
                     colors,
                 );
