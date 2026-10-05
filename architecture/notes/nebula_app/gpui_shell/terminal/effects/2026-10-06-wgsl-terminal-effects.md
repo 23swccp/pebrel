@@ -2,8 +2,9 @@
 
 ## Status
 
-Product integration in progress. The source compiler and settings contracts have
-targeted checks; full product and interaction acceptance are still separate.
+Windows opt-in product integration has native window evidence. Settings-control
+interaction, foreground performance, extended lifecycle and other-platform
+acceptance remain separate; this is not complete capability parity.
 
 ## Context
 
@@ -60,11 +61,22 @@ activation; this change does not establish other-platform or full parity accepta
 
 ## Validation
 
-Settings round-trip/default/activation cases are part of the passing settings suite.
-The actual compiler verifies frame layout, palette indexing, sampling helpers and
-ordered fragment compilation to DXBC, plus invalid binding/stage/size rejection.
-Frame packing has a focused regression. Full product, real controls, source switching,
-split isolation, pause/resume and long-running resource behavior remain to be run.
+Settings round-trip/default/activation cases pass with the shared settings suite.
+The actual compiler verifies frame layout, palette indexing, sampling helpers,
+ordered fragment compilation and the shipped source examples. A full Windows
+product build renders the effect in real isolated windows while shell commands run.
+Pixel comparisons verify terminal inversion and unchanged sidebar/titlebar regions;
+path-only configuration remains disabled. A diagnostic shader observes an OSC palette
+override and cursor geometry. Runtime API-created split panes retain distinct palettes
+and cursor locations, and video remains present under a two-pass effect.
+
+The clock diagnostic exposed a disagreement between GPUI activation and physical
+foreground state on a non-input desktop. Uniform focus flags and animation gating
+now use the same native foreground fact; the corrected native diagnostic passes.
+Native owner retirement receipts are acknowledged without observed timeout/quarantine.
+Frame-packing and full Scene unit regressions still need their native test build.
+Real settings controls, live source switching, foreground latency and endurance
+checks are not implied by these isolated-window results.
 
 ## Supersedes
 
