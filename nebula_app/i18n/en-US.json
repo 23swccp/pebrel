@@ -866,7 +866,17 @@
   },
   "wallpaper": {
     "load_failed": "Could not load the background image. Choose a readable PNG, JPEG, WebP, GIF or BMP image.",
-    "too_large": "The background image exceeds the memory limit. Choose a smaller image."
+    "too_large": "The background image exceeds the memory limit. Choose a smaller image.",
+    "kind": "Background source",
+    "image": "Image",
+    "video": "Video",
+    "kind_description": "Choose a still image or silent looping video. Video pauses while the window is in the background.",
+    "video_description": "Supports MP4/H.264. Reduced motion displays the first frame.",
+    "choose_video": "Choose video",
+    "video_prompt": "Select a terminal background video",
+    "video_failed": "Could not play the video background. Check the file format or choose another video.",
+    "video_unavailable": "Video backgrounds are unavailable in this build or on this platform.",
+    "video_preview": "Video backgrounds play in the main window after applying. This preview shows the theme colors."
   },
   "update": {
     "managed_label": "Managed by installation source",

@@ -32,6 +32,10 @@ impl SettingsPane {
                     if let SelectEvent::Confirm(Some(_)) = event {
                         let row = entity.read(cx).selected_index(cx).map(|path| path.row);
                         if let Some(value) = row.and_then(|row| values.get(row)) {
+                            if key == "background_media_kind" {
+                                this.set_background_kind(value, window, cx);
+                                return;
+                            }
                             if key == "cursor_motion" {
                                 this.set_cursor_motion(value, window, cx);
                                 return;
@@ -182,6 +186,13 @@ impl SettingsPane {
             "completion_style",
             &nebula_settings::CompletionStyleName::VALUES,
             runtime.completion_style.settings_value(),
+            window,
+            cx,
+        );
+        add_select(
+            "background_media_kind",
+            nebula_settings::BackgroundMediaKind::VALUES,
+            runtime.background_media_kind.settings_value(),
             window,
             cx,
         );

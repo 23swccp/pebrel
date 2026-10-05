@@ -5288,6 +5288,7 @@ dependencies = [
  "ab_glyph_rasterizer",
  "aes-gcm",
  "ahash",
+ "anyhow",
  "argon2",
  "ashpd",
  "base64 0.22.1",
@@ -5338,6 +5339,7 @@ dependencies = [
  "pulldown-cmark",
  "pulldown-latex",
  "rand 0.10.2",
+ "raw-window-handle",
  "regex",
  "rfd",
  "rsa",
@@ -5375,10 +5377,16 @@ dependencies = [
 name = "nebula-gpui"
 version = "0.1.0"
 dependencies = [
+ "gif 0.14.2",
  "gpui",
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
+ "image",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "windows 0.61.3",
 ]
 
 [[package]]

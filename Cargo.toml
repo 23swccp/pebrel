@@ -63,6 +63,7 @@ gpui = { opt-level = 3 }
 gpui_macros = { opt-level = 3 }
 nebula_terminal = { opt-level = 3 }
 
+nebula-gpui = { opt-level = 3, codegen-units = 16 }
 [workspace.dependencies]
 mlua = { version = "0.11.4", features = ["lua54", "vendored", "serialize", "send"] }
 serde_path_to_error = "0.1.20"

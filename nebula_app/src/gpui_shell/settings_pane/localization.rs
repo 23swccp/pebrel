@@ -17,6 +17,10 @@ pub(super) fn localized_select_labels(
             .collect();
     }
     let labels: Vec<&'static str> = match key {
+        "background_media_kind" => vec![
+            language.text(crate::i18n::Message::WallpaperImage),
+            language.text(crate::i18n::Message::WallpaperVideo),
+        ],
         "language" => nebula_settings::LanguagePref::ALL
             .iter()
             .map(|preference| {

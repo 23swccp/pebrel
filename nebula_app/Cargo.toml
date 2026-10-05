@@ -75,6 +75,7 @@ path = "../nebula-completions"
 version = "2.1.1"
 
 [dependencies]
+anyhow = { version = "=1.0.104", optional = true }
 ahash = { version = "0.8.6", features = ["no-rng"] }
 ab_glyph_rasterizer = "=0.1.10"
 base64 = "0.22.0"
@@ -149,6 +150,8 @@ regex = "1.13.1"
 image = { version = "0.25.8", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha1 = "0.11.0"
+
+raw-window-handle = { version = "=0.6.2", optional = true }
 
 [build-dependencies]
 nebula-settings = { path = "../nebula_settings", version = "2.1.1" }
@@ -311,6 +314,7 @@ gpui-shell = [
 ]
 # 真实 GPUI hitbox / 鼠标路由测试显式启用；不能放进 dev-dependencies，
 # 否则不带 gpui-shell 的默认 `cargo test -p nebula` 也会编译整棵 GPUI。
+video-background = ["gpui-shell", "dep:anyhow", "dep:raw-window-handle", "windows/Win32_Media_MediaFoundation"]
 gpui-test-support = ["gpui-shell", "gpui/test-support", "gpui-component/test-support"]
 # Explicit local updater acceptance harness; compile-rejected in release builds.
 update-test-source = ["gpui-shell"]

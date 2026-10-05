@@ -15,6 +15,12 @@ impl SettingsPane {
         let custom_background = self
             .group(language.pick("自定义背景", "Custom background"), cx)
             .child(self.background_color_row(cx))
+            .child(self.select_row(
+                "background_media_kind",
+                language.text(crate::i18n::Message::WallpaperKind),
+                language.text(crate::i18n::Message::WallpaperKindDescription),
+                cx,
+            ))
             .child(self.background_image_row(cx))
             .child(self.select_row(
                 "background_image_fit",

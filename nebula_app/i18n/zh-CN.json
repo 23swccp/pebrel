@@ -866,7 +866,17 @@
   },
   "wallpaper": {
     "load_failed": "无法加载背景图。请选择可正常读取的 PNG、JPEG、WebP、GIF 或 BMP 图片。",
-    "too_large": "背景图超出内存限制，请选择尺寸更小的图片。"
+    "too_large": "背景图超出内存限制，请选择尺寸更小的图片。",
+    "kind": "背景来源",
+    "image": "图片",
+    "video": "视频",
+    "kind_description": "选择静态图片或静音循环视频；窗口在后台时暂停视频。",
+    "video_description": "支持 MP4/H.264；减少动态效果时显示首帧。",
+    "choose_video": "选择视频",
+    "video_prompt": "选择终端背景视频",
+    "video_failed": "视频背景无法播放，请检查文件格式或重新选择视频。",
+    "video_unavailable": "此版本或平台暂不支持视频背景。",
+    "video_preview": "视频背景应用后在主窗口播放，此处仅预览主题配色。"
   },
   "update": {
     "managed_label": "由安装渠道管理更新",

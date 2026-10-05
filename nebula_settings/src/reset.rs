@@ -60,10 +60,14 @@ const RESET_KEYS: &[&str] = &[
     "theme_foreground",
     "custom_theme",
     "background_image",
+    "background_media_kind",
     "background_image_opacity",
     "background_image_fit",
     "background_image_alignment",
     "background_image_cover_chrome",
+    "background_effect_grain",
+    "background_wgsl_enabled",
+    "background_wgsl_path",
     "panel_resize",
     "sidebar_w",
     "ssh_proxy_mode",
@@ -276,6 +280,27 @@ mod tests {
                 let key = expression.split('"').next().unwrap();
                 assert!(RESET_KEYS.contains(&key), "missing reset key: {key}");
             }
+        }
+    }
+
+    #[test]
+    fn reset_removes_video_kind_and_path_but_keeps_unknown_keys() {
+        let reset = default_settings_text("background_media_kind=video\nbackground_image=clip.mp4\nfuture_key=keep\n");
+        assert_eq!(reset, "future_key=keep\n");
+        let settings = crate::RuntimeSettings::from_raw(&crate::RawSettings::from_text(&reset));
+        assert_eq!(settings.background_media_kind, crate::BackgroundMediaKind::Image);
+        assert!(settings.background_image.is_none());
+    }
+
+    #[test]
+    fn reset_revokes_effects_and_removes_the_source_without_removing_user_files() {
+        let text = "background_effect_grain=true\nbackground_wgsl_enabled=true\nbackground_wgsl_path=custom.wgsl\nshader_notes=keep\n";
+        let restored = default_settings_text(text);
+        assert_eq!(restored, "shader_notes=keep\n");
+        let settings = RuntimeSettings::from_raw(&RawSettings::from_text(&restored));
+        assert_eq!(settings.background_effects, crate::BackgroundEffects::default());
+        for key in crate::BackgroundEffects::KEYS {
+            assert!(RESET_KEYS.contains(key));
         }
     }
 

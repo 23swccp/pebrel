@@ -774,6 +774,7 @@ impl SettingsPane {
             "tray" => flag!(tray),
             "panel_resize" => flag!(panel_resize),
             "background_image_cover_chrome" => flag!(background_image_cover_chrome),
+            "background_media_kind" => pick!(background_media_kind),
             "language" => pick!(language),
             "accept" => pick!(accept),
             "completion_style" => pick!(completion_style),
@@ -843,6 +844,11 @@ impl SettingsPane {
                     move |this, window, cx| {
                         if key == "scrollback_lines" {
                             this.commit_scrollback_lines(&factory, window, cx);
+                            return;
+                        }
+                        if key == "background_media_kind" {
+                            this.set_background_kind(&factory, window, cx);
+                            this.sync_select(key, &factory, window, cx);
                             return;
                         }
                         this.persist(&[(key, factory.clone())], cx);
@@ -1004,14 +1010,57 @@ impl SettingsPane {
         )
     }
 
+    fn set_background_kind(&mut self, value: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(kind) = nebula_settings::BackgroundMediaKind::parse(value) else { return };
+        if kind == self.runtime.background_media_kind {
+            return;
+        }
+        if kind == nebula_settings::BackgroundMediaKind::Video
+            && !super::wallpaper::video_available()
+        {
+            self.error_video_unavailable(cx);
+            self.sync_select(
+                "background_media_kind",
+                self.runtime.background_media_kind.settings_value(),
+                window,
+                cx,
+            );
+            return;
+        }
+        self.persist(
+            &[
+                ("background_media_kind", kind.settings_value().to_owned()),
+                ("background_image", String::new()),
+            ],
+            cx,
+        );
+    }
+
+    fn error_video_unavailable(&mut self, cx: &mut Context<Self>) {
+        log::warn!("video background capability unavailable");
+        super::wallpaper::show_video_error(cx);
+    }
+
     fn choose_background_image(&mut self, cx: &mut Context<Self>) {
         let language = crate::gpui_shell::config::ui_language(cx);
+        let kind = self.runtime.background_media_kind;
+        if kind == nebula_settings::BackgroundMediaKind::Video
+            && !super::wallpaper::video_available()
+        {
+            self.error_video_unavailable(cx);
+            return;
+        }
         let picked = cx.prompt_for_paths(gpui::PathPromptOptions {
             files: true,
             directories: false,
             multiple: false,
             prompt: Some(
-                language.pick("选择终端背景图片", "Select a terminal background image").into(),
+                if kind == nebula_settings::BackgroundMediaKind::Video {
+                    language.text(crate::i18n::Message::WallpaperVideoPrompt)
+                } else {
+                    language.text(crate::i18n::Message::ThemeEditorChooseImage)
+                }
+                .into(),
             ),
         });
         cx.spawn(async move |this, cx| {
@@ -1019,7 +1068,16 @@ impl SettingsPane {
             let Some(path) = paths.into_iter().next() else { return };
             let value = path.to_string_lossy().into_owned();
             let _ = this.update(cx, |pane, cx| {
-                pane.persist(&[("background_image", value)], cx);
+                if pane.runtime.background_media_kind != kind {
+                    return;
+                }
+                pane.persist(
+                    &[
+                        ("background_image", value),
+                        ("background_media_kind", kind.settings_value().to_owned()),
+                    ],
+                    cx,
+                );
             });
         })
         .detach();
@@ -1027,6 +1085,8 @@ impl SettingsPane {
 
     fn background_image_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let language = crate::gpui_shell::config::ui_language(cx);
+        let video =
+            self.runtime.background_media_kind == nebula_settings::BackgroundMediaKind::Video;
         let current = self.runtime.background_image.clone();
         let has_image = current.as_ref().is_some_and(|path| !path.trim().is_empty());
         let path_label: Option<SharedString> =
@@ -1039,8 +1099,16 @@ impl SettingsPane {
                     .into()
             });
         self.row_with_reset(
-            language.pick("背景图片", "Background image"),
-            help("background_image", language),
+            if video {
+                language.text(crate::i18n::Message::WallpaperVideo)
+            } else {
+                language.pick("背景图片", "Background image")
+            },
+            if video {
+                language.text(crate::i18n::Message::WallpaperVideoDescription).into()
+            } else {
+                help("background_image", language)
+            },
             has_image,
             |this, _, cx| {
                 this.persist(&[("background_image", String::new())], cx);
@@ -1050,7 +1118,11 @@ impl SettingsPane {
                 .gap_2()
                 .child(
                     NebulaButton::new("background-image-choose")
-                        .label(language.pick("选择图片", "Choose image"))
+                        .label(if video {
+                            language.text(crate::i18n::Message::WallpaperChooseVideo)
+                        } else {
+                            language.text(crate::i18n::Message::ThemeEditorChooseImage)
+                        })
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.choose_background_image(cx);
                         })),

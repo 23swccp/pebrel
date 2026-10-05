@@ -19,6 +19,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(windows)]
 use std::sync::OnceLock;
 
+#[cfg(all(windows, feature = "video-background"))]
+use gpui::AppContext as _;
 use gpui::{
     App, Bounds, ContentMask, Corners, Hsla, IntoElement, ParentElement, Pixels, RenderImage,
     Styled, Window, WindowBackgroundAppearance, div, fill, point, px, size,
@@ -26,9 +28,13 @@ use gpui::{
 use image::{Frame, RgbaImage};
 
 mod image_loader;
+#[cfg(all(windows, feature = "video-background"))]
+mod playback;
 pub(crate) mod preview;
 #[cfg(all(test, feature = "gpui-test-support"))]
 mod tests;
+#[cfg(all(windows, feature = "video-background"))]
+mod video;
 use nebula_settings::BlurModeName;
 
 use crate::renderer::image::{BackgroundImageAlignment, BackgroundImageFit, wallpaper_rect};
@@ -41,6 +47,11 @@ pub struct VisualEffects {
     wallpaper: Option<Wallpaper>,
     generation: Arc<AtomicU64>,
     loading: bool,
+    kind: nebula_settings::BackgroundMediaKind,
+    #[cfg(all(windows, feature = "video-background"))]
+    video: Option<gpui::Entity<playback::Playback>>,
+    #[cfg(all(windows, feature = "video-background"))]
+    retired_video: Option<gpui::Entity<playback::Playback>>,
 }
 
 impl gpui::Global for VisualEffects {}
@@ -88,13 +99,27 @@ fn update_wallpaper(
             wallpaper: None,
             generation: Arc::new(AtomicU64::new(0)),
             loading: false,
+            kind: nebula_settings::BackgroundMediaKind::Image,
+            #[cfg(all(windows, feature = "video-background"))]
+            video: None,
+            #[cfg(all(windows, feature = "video-background"))]
+            retired_video: None,
         });
     }
     let desired = rt.background_image.as_ref().map(PathBuf::from);
+    let source_changed = {
+        let effects = cx.global::<VisualEffects>();
+        effects.kind != rt.background_media_kind
+            || effects.wallpaper.as_ref().map(|wp| &wp.path) != desired.as_ref()
+    };
+    #[cfg(all(windows, feature = "video-background"))]
+    let source_changed = source_changed
+        || cx.global::<VisualEffects>().video.as_ref().is_some_and(|actor| actor.read(cx).failed());
     let effects = cx.global_mut::<VisualEffects>();
     effects.opacity = opacity;
     effects.blur = blur;
-    let retired = if effects.wallpaper.as_ref().map(|wp| &wp.path) != desired.as_ref() {
+    effects.kind = rt.background_media_kind;
+    let retired = if source_changed {
         let retired = effects.wallpaper.take().and_then(|wp| wp.image);
         effects.wallpaper = desired.map(|path| Wallpaper {
             path,
@@ -127,12 +152,47 @@ fn update_wallpaper(
     }
     effects.generation.fetch_add(1, Ordering::Release);
     retire_image(retired, cx);
-    start_load(cx);
+    if rt.background_media_kind == nebula_settings::BackgroundMediaKind::Video {
+        #[cfg(all(windows, feature = "video-background"))]
+        if source_changed {
+            let old = cx.global_mut::<VisualEffects>().video.take();
+            if let Some(old) = old {
+                let ready = old.read(cx).has_front();
+                old.update(cx, |video, _| video.freeze());
+                if ready {
+                    cx.global_mut::<VisualEffects>().retired_video = Some(old);
+                }
+            }
+            let path = cx.global::<VisualEffects>().wallpaper.as_ref().map(|wp| wp.path.clone());
+            if path.is_none() {
+                cx.global_mut::<VisualEffects>().retired_video.take();
+            }
+            let prepared = path.map(|path| cx.new(|cx| playback::Playback::new(path, cx)));
+            cx.global_mut::<VisualEffects>().video = prepared;
+        }
+        #[cfg(all(windows, feature = "video-background"))]
+        if let Some(actor) = cx.global::<VisualEffects>().video.clone() {
+            let enabled = rt.background_image_opacity > 0.0;
+            actor.update(cx, |state, cx| state.set_enabled(enabled, cx));
+        }
+        #[cfg(not(all(windows, feature = "video-background")))]
+        if source_changed {
+            show_video_error(cx);
+        }
+    } else {
+        #[cfg(all(windows, feature = "video-background"))]
+        {
+            let effects = cx.global_mut::<VisualEffects>();
+            effects.video.take();
+            effects.retired_video.take();
+        }
+        start_load(cx);
+    }
 }
 
 fn start_load(cx: &mut App) {
     let effects = cx.global_mut::<VisualEffects>();
-    if effects.loading {
+    if effects.loading || effects.kind == nebula_settings::BackgroundMediaKind::Video {
         return;
     }
     let Some(wp) = effects.wallpaper.as_ref() else { return };
@@ -244,7 +304,8 @@ pub fn chrome_surface_opacity(cx: &App) -> f32 {
     let Some(effects) = cx.try_global::<VisualEffects>() else {
         return 1.0;
     };
-    if effects.wallpaper.as_ref().is_some_and(|wp| wp.cover_chrome && wp.image.is_some()) {
+    if effects.wallpaper.as_ref().is_some_and(|wp| wp.cover_chrome && background_ready(effects, cx))
+    {
         return effects.opacity.clamp(0.0, 1.0).min(0.78);
     }
     effects.opacity.clamp(0.0, 1.0)
@@ -799,7 +860,7 @@ fn image_bounds(wp: &Wallpaper, anchor: Bounds<Pixels>, scale: f32) -> Bounds<Pi
     )
 }
 
-fn paint_wallpaper(bounds: Bounds<Pixels>, under_chrome: bool, window: &mut Window, cx: &App) {
+fn paint_wallpaper(bounds: Bounds<Pixels>, under_chrome: bool, window: &mut Window, cx: &mut App) {
     let Some(effects) = cx.try_global::<VisualEffects>() else { return };
     let Some(wp) = effects.wallpaper.as_ref() else { return };
     // In the previous CPU crop path an offset card produced an empty overlay
@@ -807,6 +868,76 @@ fn paint_wallpaper(bounds: Bounds<Pixels>, under_chrome: bool, window: &mut Wind
     // remove the visible scrim. Preserve that appearance directly, without
     // retaining the broken crop arithmetic or an empty card-sized bitmap.
     if wp.opacity <= 0.0 || under_chrome != wp.cover_chrome {
+        return;
+    }
+    #[cfg(all(windows, feature = "video-background"))]
+    if effects.kind == nebula_settings::BackgroundMediaKind::Video {
+        let current = effects.video.clone();
+        let fallback = effects.retired_video.clone();
+        let fit = wp.fit;
+        let alignment = wp.alignment;
+        let extended = wp.cover_chrome;
+        let anchor = if extended {
+            Bounds::new(point(px(0.0), px(0.0)), window.viewport_size())
+        } else {
+            bounds
+        };
+        let radius = if under_chrome { px(0.0) } else { crate::gpui_shell::theme::card_radius(cx) };
+        let ready = current
+            .and_then(|actor| {
+                actor.update(cx, |state, cx| state.touch(window, cx)).map(|data| (actor, data))
+            })
+            .or_else(|| {
+                fallback.and_then(|actor| {
+                    actor.update(cx, |state, cx| state.touch(window, cx)).map(|data| (actor, data))
+                })
+            });
+        if let Some((actor, (front, owner))) = ready {
+            let scale = window.scale_factor().max(0.5);
+            let (x, y, w, h) = wallpaper_rect(
+                f32::from(anchor.size.width) * scale,
+                f32::from(anchor.size.height) * scale,
+                front.frame.width as f32,
+                front.frame.height as f32,
+                fit,
+                alignment,
+            );
+            let image_bounds = Bounds::new(
+                anchor.origin + point(px(x / scale), px(y / scale)),
+                size(px(w / scale), px(h / scale)),
+            );
+            let frame = gpui::StreamImageFrame {
+                sequence: front.frame.sequence,
+                size: size(
+                    gpui::DevicePixels(front.frame.width as i32),
+                    gpui::DevicePixels(front.frame.height as i32),
+                ),
+                row_stride: front.frame.width as usize * 4,
+                pixels: &front.frame.pixels,
+            };
+            match window.paint_stream_image(
+                bounds,
+                image_bounds,
+                image_corners(bounds, image_bounds, radius),
+                &owner,
+                &frame,
+                false,
+            ) {
+                Ok(update) => {
+                    if update.tile.is_some() {
+                        actor.update(cx, |state, cx| state.mark_presentable(cx));
+                    }
+                    if let Some(completion) = update.completion {
+                        let id = window.window_handle().window_id();
+                        actor.update(cx, |state, cx| state.wait_for_gpu(id, completion, cx));
+                    }
+                },
+                Err(error) => {
+                    log::warn!("video background paint failed: {error:#}");
+                    actor.update(cx, |state, cx| state.fail(cx));
+                },
+            }
+        }
         return;
     }
     let Some(image) = wp.image.as_ref() else { return };
@@ -847,10 +978,55 @@ pub(crate) fn test_install_visual_effects(cx: &mut App, opacity: f32, blur: Blur
         wallpaper: None,
         generation: Arc::new(AtomicU64::new(0)),
         loading: false,
+        kind: nebula_settings::BackgroundMediaKind::Image,
+        #[cfg(all(windows, feature = "video-background"))]
+        video: None,
+        #[cfg(all(windows, feature = "video-background"))]
+        retired_video: None,
     });
 }
 
 #[cfg(test)]
 pub(crate) fn test_apply_window_effects(cx: &mut App) {
     apply_window_effects(cx);
+}
+
+pub(super) fn video_available() -> bool {
+    cfg!(all(windows, feature = "video-background"))
+}
+fn background_ready(effects: &VisualEffects, cx: &App) -> bool {
+    if effects.wallpaper.as_ref().is_some_and(|wp| wp.image.is_some()) {
+        return true;
+    }
+    #[cfg(all(windows, feature = "video-background"))]
+    {
+        return effects.video.as_ref().is_some_and(|v| v.read(cx).has_front())
+            || effects.retired_video.as_ref().is_some_and(|v| v.read(cx).has_front());
+    }
+    #[cfg(not(all(windows, feature = "video-background")))]
+    {
+        let _ = cx;
+        false
+    }
+}
+pub(super) fn show_video_error(cx: &mut App) {
+    use crate::i18n::Message;
+    let message = if video_available() {
+        Message::WallpaperVideoFailed
+    } else {
+        Message::WallpaperVideoUnavailable
+    };
+    cx.defer(move |cx| {
+        let text = crate::gpui_shell::config::ui_language(cx).text(message);
+        if let Some(handle) = cx.windows().first() {
+            let _ = handle.update(cx, |_, window, cx| {
+                crate::gpui_shell::toast::toast(
+                    window,
+                    cx,
+                    crate::gpui_shell::toast::ToastKind::Warning,
+                    text,
+                );
+            });
+        }
+    });
 }
