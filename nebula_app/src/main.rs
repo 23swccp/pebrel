@@ -577,7 +577,6 @@ fn try_hand_over_to_resident(options: &Options) -> bool {
     false
 }
 
-#[cfg(windows)]
 fn resident_launch_directory(
     options: &cli::TerminalOptions,
     settings: &nebula_settings::RuntimeSettings,
@@ -591,7 +590,7 @@ fn resident_launch_directory(
         .and_then(|path| std::path::absolute(path).ok())
 }
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod resident_launch_tests {
     use super::*;
     use clap::Parser as _;
