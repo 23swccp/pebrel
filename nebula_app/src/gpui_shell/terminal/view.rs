@@ -274,7 +274,7 @@ pub struct TerminalView {
     /// 公式覆盖层（探测/持久化状态复用旧壳 `terminal_math`，每 pane 一份）。
     pub math: super::math_overlay::MathOverlay,
     #[cfg(all(windows, feature = "shader-background"))]
-    pub(super) effect: Option<Entity<super::effects::TerminalEffect>>,
+    pub(super) effect: Option<gpui::Entity<super::effects::TerminalEffect>>,
     pub font: Font,
     pub font_bold: Font,
     pub font_italic: Font,
