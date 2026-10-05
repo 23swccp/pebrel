@@ -98,7 +98,10 @@ impl<T: EventListener> Term<T> {
             None => return,
         };
 
-        if !c.is_ascii() && self.extend_emoji_input(c, width) {
+        if !c.is_ascii()
+            && (self.input_cluster.is_some() || width == 0 || c > '\u{ffff}')
+            && self.extend_emoji_input(c, width)
+        {
             return;
         }
         self.reset_input_cluster();
@@ -178,13 +181,9 @@ impl<T: EventListener> Term<T> {
         self.input_end = Some((self.grid.cursor.point, self.grid.cursor.input_needs_wrap));
     }
 
+    // 分段器初始化和宽度迁移需要大临时状态；禁止内联以免扩大普通字符的栈帧。
+    #[inline(never)]
     fn extend_emoji_input(&mut self, c: char, char_width: usize) -> bool {
-        // Without a preceding zero-width continuation, Unicode 17's positive
-        // emoji extensions are supplementary-plane modifiers or RI symbols.
-        // The locked-data regression checks every BMP successor against all bases.
-        if self.input_cluster.is_none() && char_width > 0 && c <= '\u{ffff}' {
-            return false;
-        }
         let Some((next, wrap)) = self.input_end else { return false };
         if next != self.grid.cursor.point || wrap != self.grid.cursor.input_needs_wrap {
             return false;
@@ -197,12 +196,12 @@ impl<T: EventListener> Term<T> {
             point.column.0 = point.column.saturating_sub(1);
         }
         let cell = &self.grid[point];
-        let mut cluster = if let Some(cluster) = self.input_cluster.take() {
-            cluster
-        } else {
-            let Some(cluster) = EmojiInput::new(cell.c) else { return false };
-            Box::new(cluster)
-        };
+        // 每个 pane 只有一份分段状态，原地更新，避免逐 emoji 分配 Box，
+        // 也避免在每个码点上搬动整个 GraphemeCursor。
+        if self.input_cluster.is_none() {
+            self.input_cluster = EmojiInput::new(cell.c);
+        }
+        let Some(cluster) = self.input_cluster.as_mut() else { return false };
         let old_width = if cell.flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 };
         let width = if char_width > 0 {
             if !c.is_emoji_char() {
@@ -228,18 +227,20 @@ impl<T: EventListener> Term<T> {
         if !cluster.continues(c, cell) {
             return false;
         }
-        self.grid[point].push_zerowidth(c);
-        if width != old_width {
-            self.resize_emoji_cell(&mut point, width);
-        }
-        self.damage.damage_point(Point::new(point.line.0 as usize, point.column));
         if char_width > 0 {
             cluster.graphic = c;
             cluster.joined = true;
         }
         cluster.last = c;
+        self.grid[point].push_zerowidth(c);
+        if width != old_width {
+            // 换行/插删格会统一清除连续输入状态；仅在这条冷路径暂存它。
+            let cluster = self.input_cluster.take();
+            self.resize_emoji_cell(&mut point, width);
+            self.input_cluster = cluster;
+        }
+        self.damage.damage_point(Point::new(point.line.0 as usize, point.column));
         self.input_end = Some((self.grid.cursor.point, self.grid.cursor.input_needs_wrap));
-        self.input_cluster = Some(cluster);
         true
     }
 

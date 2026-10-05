@@ -3,6 +3,9 @@
 ## Status
 Proposed production fix for Issue #403; remote core evidence recorded below.
 
+Superseded by [the state-cost revision](2026-10-05-emoji-input-state-cost.md)
+for boxed-state ownership and local performance evidence only.
+
 ## Context
 Single-codepoint input width splits ZWJ, modifier and regional-indicator emoji.
 The report supplies seven exact sequences and contrasts single-codepoint emoji.

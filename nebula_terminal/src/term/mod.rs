@@ -161,7 +161,7 @@ pub fn viewport_to_point_from(origin: Line, point: Point<usize>) -> Point {
 
 pub struct Term<T> {
     redraw_anchor: redraw_anchor::RedrawAnchor,
-    input_cluster: Option<Box<input::EmojiInput>>,
+    input_cluster: Option<input::EmojiInput>,
     input_end: Option<(Point, bool)>,
     /// Terminal focus controlling the cursor shape.
     pub is_focused: bool,

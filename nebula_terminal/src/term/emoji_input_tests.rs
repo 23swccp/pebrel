@@ -59,6 +59,47 @@ fn reported_emoji_are_one_wide_cell_across_utf8_chunks_copy_and_snapshot() {
 }
 
 #[test]
+fn ordinary_ascii_ends_emoji_clusters_while_keycaps_still_compose() {
+    for c in ' '..='~' {
+        let mut term = terminal(80);
+        feed(&mut term, "👨‍👩", 1);
+        term.input(c);
+        assert!(term.input_cluster.is_none());
+        assert_eq!(cell_text(&term.grid[Line(0)][Column(0)]), "👨‍👩");
+        assert_eq!(term.grid[Line(0)][Column(2)].c, c);
+    }
+    for c in ['#', '*', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] {
+        let mut term = terminal(80);
+        let keycap = format!("{c}\u{fe0f}\u{20e3}");
+        feed(&mut term, &keycap, 1);
+        assert_eq!(cell_text(&term.grid[Line(0)][Column(0)]), keycap);
+        assert_eq!(term.grid.cursor.point.column, Column(2));
+    }
+}
+
+#[test]
+fn ordinary_input_preserves_insert_wrap_and_mapped_characters() {
+    let mut term = terminal(4);
+    feed(&mut term, "ABCDX", 1);
+    assert_eq!(term.grid[Line(1)][Column(0)].c, 'X');
+    assert!(term.grid[Line(0)][Column(3)].flags.contains(Flags::WRAPLINE));
+    feed(&mut term, "\x1b[1;2H\x1b[4hZ", 1);
+    let row: String = (0..4).map(|column| term.grid[Line(0)][Column(column)].c).collect();
+    assert_eq!(row, "AZBC");
+
+    for c in ' '..='~' {
+        if c.is_emoji_char() {
+            continue;
+        }
+        let mut term = terminal(4);
+        feed(&mut term, "\x1b(0", 1);
+        term.input(c);
+        assert!(!term.grid[Line(0)][Column(0)].c.is_emoji_char());
+        assert_eq!(term.grid.cursor.point.column, Column(1));
+    }
+}
+
+#[test]
 fn emoji_continuity_survives_sgr_sync_and_noop_resize_but_not_cursor_or_grid_edits() {
     let mut term = terminal(80);
     feed(&mut term, "👨\x1b[31m\x1b[?2026h‍👩\x1b[?2026l‍👧", 1);
@@ -73,9 +114,33 @@ fn emoji_continuity_survives_sgr_sync_and_noop_resize_but_not_cursor_or_grid_edi
     term.input('🏽');
     assert_eq!(cell_text(&term.grid[Line(0)][Column(0)]), "👍🏽");
 
-    for control in
-        ["\x1b[3G", "\x1b[1D\x1b[1C", "\x1b[0K", "\x1b#8", "\x1b[1L", "\x1b[1M", "\x1b[1I\x1b[1Z"]
-    {
+    for control in [
+        "\x1b[3G",
+        "\x1b[1D\x1b[1C",
+        "\x1b[0K",
+        "\x1b#8",
+        "\x1b[1L",
+        "\x1b[1M",
+        "\x1b[1I\x1b[1Z",
+        "\x1b[1A",
+        "\x1b[1B",
+        "\x1b[1P",
+        "\x1b[1@",
+        "\x1b[1X",
+        "\x1b[1S",
+        "\x1b[1T",
+        "\x08",
+        "\r",
+        "\n",
+        "\t",
+        "\x1bM",
+        "\x1b7\x1b8",
+        "\x1b[2J",
+        "\x1bc",
+        "\x1b[?1049h\x1b[?1049l",
+        "\x1b[4h\x1b[4l",
+        "\x1b[2;4r",
+    ] {
         let mut term = terminal(80);
         feed(&mut term, "👍", 1);
         feed(&mut term, control, 1);
@@ -93,6 +158,10 @@ fn emoji_continuity_survives_sgr_sync_and_noop_resize_but_not_cursor_or_grid_edi
     term.input('👍');
     term.swap_alt();
     assert!(term.input_cluster.is_none());
+    let mut term = terminal(80);
+    term.input('👍');
+    let _ = term.grid_mut();
+    assert!(term.input_end.is_none(), "raw grid access invalidates the pending head");
 }
 
 #[test]
