@@ -3,7 +3,7 @@ use nebula_settings::TabsPositionName;
 
 use super::{
     NebulaWorkspace, SettingsPane, SettingsPaneEvent, SidebarActivity, TabPresentation,
-    tab_reveal_instant, windowing,
+    tab_reveal_instant,
 };
 
 #[cfg(all(test, feature = "gpui-test-support"))]
@@ -93,7 +93,7 @@ impl NebulaWorkspace {
         self.reveal_active_tab();
         cx.notify();
         if self.tabs.is_empty() {
-            windowing::close_empty_workspace_window(self.runtime_window_id, window, cx);
+            self.close_empty_workspace(window, cx);
         }
     }
 
