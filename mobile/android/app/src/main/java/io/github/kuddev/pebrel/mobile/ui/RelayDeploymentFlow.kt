@@ -53,8 +53,9 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
     val host = hosts.find { it.id == selectedId }
     val endpoint = runCatching { parseSshEndpoint(address, user) }.getOrNull()
     val savedPassword = credentials.isNotEmpty() && host != null && repository.hasSavedPassword(host)
+    val keyAuthentication = host?.keyUri?.isNotBlank() == true
     val valid = (host != null || endpoint != null && (sshPort.toIntOrNull() ?: 0) in 1..65535) &&
-        (password.isNotEmpty() || savedPassword) && (servicePort.toIntOrNull() ?: 0) in 1..65535
+        (keyAuthentication || password.isNotEmpty() || savedPassword) && (servicePort.toIntOrNull() ?: 0) in 1..65535
     val saveFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         val text = exportText
         exportText = ""
@@ -83,7 +84,8 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
         job = scope.launch {
             var secret = entered
             try {
-                if (secret == null) secret = repository.loadSavedPassword(selected)
+                // 与普通 SSH 共用凭据解析：未加密私钥可空口令，已存口令读取失败仍阻止连接。
+                if (secret == null) secret = repository.passwordForConnection(selected, null)
                 if (secret == null) throw RelayServiceFailure("missing_credentials")
                 result = NativeRelayDeployment.execute(context, selected, checkNotNull(secret),
                     { h, fingerprint -> repository.verifySshOperation(owner, h, fingerprint) },
@@ -128,9 +130,10 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
                     ConnectionField(address, { address = it; resetStatus() }, R.string.host_address, keyboard = KeyboardType.Uri)
                     ConnectionField(user, { user = it; resetStatus() }, R.string.username)
                 }
-                ConnectionField(password, { password = it }, R.string.password, keyboard = KeyboardType.Password,
+                ConnectionField(password, { password = it }, if (keyAuthentication) R.string.ssh_key_passphrase else R.string.credential_password, keyboard = KeyboardType.Password,
                     placeholder = if (savedPassword) stringResource(R.string.password_saved_placeholder) else "",
                     transformation = PasswordVisualTransformation(), limit = 1024)
+                if (keyAuthentication) HelperText(stringResource(R.string.ssh_key_passphrase_hint))
                 TextButton({ advanced = !advanced }) { Text(stringResource(R.string.service_advanced)) }
                 if (advanced) {
                     if (host == null) ConnectionField(sshPort, { sshPort = it; resetStatus() }, R.string.port, keyboard = KeyboardType.Number, limit = 5)

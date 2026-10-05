@@ -298,6 +298,26 @@ class CommandComposerTest {
         compose.onNodeWithText("sh install.sh 'SERVER_IP' 443\n/opt/pebrel-relay/pebrel-relay service-status").assertExists()
     }
 
+    @Test fun servicePageAllowsAnUnencryptedKeyAndSeparatesItsPassphraseFromAPassword() {
+        val context = ApplicationProvider.getApplicationContext<PebrelApplication>()
+        val repository = SessionRepository(context)
+        val keyHost = HostProfile("relay-key", "Key host", "192.0.2.1", user = "root",
+            keyUri = "content://fixture/private-key", keyName = "private-key")
+        repository.saveHost(keyHost)
+        compose.setContent { MaterialTheme { RelayDeploymentFlow(repository) {} } }
+        compose.onNodeWithContentDescription(context.getString(R.string.ssh_key_passphrase)).assertExists()
+        compose.onNodeWithText(context.getString(R.string.ssh_key_passphrase_hint)).assertExists()
+        compose.onNodeWithText(context.getString(R.string.service_install)).assertIsEnabled()
+        compose.onNodeWithText(context.getString(R.string.service_check)).assertIsEnabled()
+        compose.onNodeWithContentDescription(context.getString(R.string.ssh_key_passphrase))
+            .performTextInput("private-key-passphrase")
+        compose.onNodeWithText(context.getString(R.string.service_install)).assertIsEnabled()
+        compose.runOnIdle { repository.saveHost(keyHost.copy(keyUri = "", keyName = "")) }
+        compose.onNodeWithContentDescription(context.getString(R.string.credential_password))
+            .performTextClearance()
+        compose.onNodeWithText(context.getString(R.string.service_install)).assertIsNotEnabled()
+    }
+
     private fun saveSurface(tag: String) {
         val file = File("build/reports/composer/$tag.png")
         check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs())
