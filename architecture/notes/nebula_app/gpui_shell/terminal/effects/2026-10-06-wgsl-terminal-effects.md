@@ -37,7 +37,8 @@ requires exact physical dimensions and retains resources until GPU completion.
 - Keep native bytecode compilation in one source implementation shared with the
   background compiler. Read files and compile only on owned background work.
 - Handle cancellation, stale source/native receipts, visibility and reload without
-  GPU work on the UI thread. Stop recurring animation while inactive/reduced-motion;
+  file reads or pipeline construction on the UI thread. Native draw submissions
+  remain on the renderer's owning thread. Stop recurring animation while inactive/reduced-motion;
   the content-change mode has no recurring timer. Timestamp observations remain
   monotonic when a later content update is rendered.
 

@@ -369,6 +369,10 @@ pub(super) fn paint(
     ];
     actor.update(cx, |this, cx| {
         this.configure(config, revision);
+        // 旧几何的场景可能晚到一帧；它的错误不应停用替换后的所有者。
+        if this.owner.is_none() || this.extent != extent {
+            this.feedback = PostprocessFeedback::default();
+        }
         if let Some(error) = this.feedback.take_error() {
             this.fail(&error, cx);
         }
