@@ -1013,7 +1013,7 @@ impl NebulaWorkspace {
         match startup {
             windowing::WorkspaceStartup::RestoreUpdate(session) => {
                 if !this.restore_update_session(&session, runtime.resume_ai, window, cx) {
-                    this.add_terminal_at(std::env::current_dir().ok(), None, window, cx);
+                    this.add_terminal_at(Self::cold_start_cwd(), None, window, cx);
                 }
             },
             windowing::WorkspaceStartup::RestoreOrDefault => {
@@ -1021,7 +1021,7 @@ impl NebulaWorkspace {
                 if !runtime.restore_session
                     || !this.try_restore_session(runtime.resume_ai, window, cx)
                 {
-                    this.add_terminal_at(std::env::current_dir().ok(), None, window, cx);
+                    this.add_terminal_at(Self::cold_start_cwd(), None, window, cx);
                 }
             },
             windowing::WorkspaceStartup::NewTerminal { cwd } => {
