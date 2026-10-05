@@ -38,6 +38,8 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
     var advanced by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(false) }
     var choosing by remember { mutableStateOf(false) }
+    var addingHost by remember { mutableStateOf(false) }
+    var savingHost by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<RelayServiceResult?>(null) }
     var stage by remember { mutableStateOf<String?>(null) }
     var installProgress by remember { mutableStateOf<RelayInstallProgress?>(null) }
@@ -49,7 +51,7 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
     var purge by remember { mutableStateOf(false) }
     var exportFeedback by remember { mutableStateOf<Int?>(null) }
     var exportText by remember { mutableStateOf("") }
-    val busy = running
+    val busy = running || savingHost
     val host = hosts.find { it.id == selectedId }
     val endpoint = runCatching { parseSshEndpoint(address, user) }.getOrNull()
     val savedPassword = credentials.isNotEmpty() && host != null && repository.hasSavedPassword(host)
@@ -123,6 +125,9 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             HelperText(stringResource(R.string.service_intro))
             if (!busy) {
+                OutlinedButton({ addingHost = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.service_add_ssh_host))
+                }
                 if (hosts.isNotEmpty()) OutlinedButton({ choosing = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(host?.name ?: stringResource(R.string.deploy_choose_host))
                 }
@@ -186,6 +191,29 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
             }
         }
     }
+    if (addingHost) HostForm(
+        initial = null,
+        onCancel = { addingHost = false },
+        passwordSaved = false,
+        busy = savingHost,
+        onClearPassword = {},
+        allowConnect = false,
+        onSave = save@ { entry, secret, rememberPassword, _ ->
+            if (savingHost) { secret?.fill('\u0000'); return@save }
+            savingHost = true
+            scope.launch {
+                try {
+                    // 复用 SSH 主机表单及其文档授权/凭据事务，保存后回到安装而非启动终端。
+                    if (repository.saveHostWithCredentials(entry, secret, rememberPassword)) {
+                        selectedId = entry.id
+                        password = if (rememberPassword) "" else secret?.concatToString().orEmpty()
+                        addingHost = false
+                        resetStatus()
+                    }
+                } finally { secret?.fill('\u0000'); savingHost = false }
+            }
+        },
+    )
     if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text(stringResource(R.string.deploy_choose_host)) },
         text = { Column { hosts.forEach { entry -> TextButton({ selectedId = entry.id; password = ""; choosing = false; resetStatus() }) { Text(entry.name) } }
             TextButton({ selectedId = null; password = ""; choosing = false; resetStatus() }) { Text(stringResource(R.string.deploy_manual)) } } },
