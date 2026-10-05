@@ -5321,6 +5321,7 @@ dependencies = [
  "log",
  "markdown",
  "mlua",
+ "naga",
  "nebula-settings",
  "nebula-split",
  "nebula_config",

@@ -43,6 +43,7 @@ mod appearance_advanced;
 mod appearance_picker;
 #[path = "background_color.rs"]
 mod background_color;
+mod background_shader;
 mod backup;
 mod cursor_motion;
 mod design;
@@ -112,6 +113,7 @@ pub struct SettingsPane {
     mobile: mobile::MobileState,
     appearance_picker: Option<appearance_picker::AppearancePicker>,
     appearance_picker_seq: u64,
+    shader_picker: Option<Task<()>>,
     pub(super) theme_editor: Option<theme_editor::ThemeEditor>,
     theme_editor_seq: u64,
     pub(super) theme_transfer: theme_transfer::ThemeTransferState,
@@ -775,6 +777,9 @@ impl SettingsPane {
             "panel_resize" => flag!(panel_resize),
             "background_image_cover_chrome" => flag!(background_image_cover_chrome),
             "background_media_kind" => pick!(background_media_kind),
+            "background_shader_preset" => {
+                Some((cur.background_effects.preset() != "off", "off".to_owned()))
+            },
             "language" => pick!(language),
             "accept" => pick!(accept),
             "completion_style" => pick!(completion_style),
@@ -849,6 +854,10 @@ impl SettingsPane {
                         if key == "background_media_kind" {
                             this.set_background_kind(&factory, window, cx);
                             this.sync_select(key, &factory, window, cx);
+                            return;
+                        }
+                        if key == "background_shader_preset" {
+                            this.set_shader_preset(&factory, window, cx);
                             return;
                         }
                         this.persist(&[(key, factory.clone())], cx);

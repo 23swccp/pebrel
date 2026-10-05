@@ -23,6 +23,13 @@ impl SettingsPane {
             ))
             .child(self.background_image_row(cx))
             .child(self.select_row(
+                "background_shader_preset",
+                language.text(crate::i18n::Message::WallpaperShader),
+                language.text(crate::i18n::Message::WallpaperShaderDescription),
+                cx,
+            ))
+            .child(self.shader_source_row(cx))
+            .child(self.select_row(
                 "background_image_fit",
                 language.pick("背景图像拉伸模式", "Background image fit"),
                 help("background_image_fit", language),

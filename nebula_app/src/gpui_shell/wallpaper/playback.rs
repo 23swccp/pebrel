@@ -49,7 +49,7 @@ pub(super) struct Playback {
     closed: Subscription,
 }
 
-fn allowed(native: isize) -> bool {
+pub(super) fn allowed(native: isize) -> bool {
     use windows::Win32::{
         Foundation::HWND,
         UI::WindowsAndMessaging::{GetForegroundWindow, IsIconic, IsWindowVisible},
@@ -69,6 +69,17 @@ struct GlobalBudgets {
 }
 impl gpui::Global for GlobalBudgets {}
 
+pub(super) fn gpu_budget(cx: &mut App) -> Arc<StreamImageBudget> {
+    if !cx.has_global::<GlobalBudgets>() {
+        cx.set_global(GlobalBudgets {
+            cpu: StreamImageBudget::with_allocation_limit(96 * 1024 * 1024, 16),
+            gpu: StreamImageBudget::new(64 * 1024 * 1024),
+            decoder: StreamImageBudget::with_allocation_limit(1, 1),
+        });
+    }
+    cx.global::<GlobalBudgets>().gpu.clone()
+}
+
 impl Playback {
     pub fn new(path: PathBuf, cx: &mut Context<Self>) -> Self {
         let weak = cx.weak_entity();
@@ -82,15 +93,8 @@ impl Playback {
             });
         });
         cx.on_release(|this, _| this.cancel()).detach();
-        if !cx.has_global::<GlobalBudgets>() {
-            cx.set_global(GlobalBudgets {
-                cpu: StreamImageBudget::with_allocation_limit(96 * 1024 * 1024, 16),
-                gpu: StreamImageBudget::new(64 * 1024 * 1024),
-                decoder: StreamImageBudget::with_allocation_limit(1, 1),
-            });
-        }
+        let gpu_global = gpu_budget(cx);
         let cpu_global = cx.global::<GlobalBudgets>().cpu.clone();
-        let gpu_global = cx.global::<GlobalBudgets>().gpu.clone();
         let decoder_global = cx.global::<GlobalBudgets>().decoder.clone();
         Self {
             path,

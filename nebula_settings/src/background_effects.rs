@@ -4,6 +4,9 @@ use crate::RawSettings;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BackgroundEffects {
     pub grain: bool,
+    pub neon_vortex: bool,
+    pub aurora_ribbons: bool,
+    pub liquid_silk: bool,
     pub wgsl: bool,
     pub wgsl_path: Option<String>,
 }
@@ -12,16 +15,30 @@ pub struct BackgroundEffects {
 pub enum BackgroundEffectRequest<'a> {
     Disabled,
     Grain,
+    NeonVortex,
+    AuroraRibbons,
+    LiquidSilk,
     Wgsl(&'a str),
 }
 
 impl BackgroundEffects {
-    pub const KEYS: &'static [&'static str] =
-        &["background_effect_grain", "background_wgsl_enabled", "background_wgsl_path"];
+    pub const KEYS: &'static [&'static str] = &[
+        "background_effect_grain",
+        "background_effect_neon_vortex",
+        "background_effect_aurora_ribbons",
+        "background_effect_liquid_silk",
+        "background_wgsl_enabled",
+        "background_wgsl_path",
+    ];
+    pub const PRESETS: &'static [&'static str] =
+        &["off", "grain", "neon_vortex", "aurora_ribbons", "liquid_silk", "wgsl"];
 
     pub fn from_raw(raw: &RawSettings) -> Self {
         Self {
             grain: raw.bool_on("background_effect_grain").unwrap_or(false),
+            neon_vortex: raw.bool_on("background_effect_neon_vortex").unwrap_or(false),
+            aurora_ribbons: raw.bool_on("background_effect_aurora_ribbons").unwrap_or(false),
+            liquid_silk: raw.bool_on("background_effect_liquid_silk").unwrap_or(false),
             wgsl: raw.bool_on("background_wgsl_enabled").unwrap_or(false),
             wgsl_path: raw.value("background_wgsl_path").map(str::to_owned),
         }
@@ -37,11 +54,52 @@ impl BackgroundEffects {
                 .map(BackgroundEffectRequest::Wgsl)
                 .ok_or("background_wgsl_enabled requires background_wgsl_path");
         }
-        Ok(if self.grain {
+        Ok(if self.neon_vortex {
+            BackgroundEffectRequest::NeonVortex
+        } else if self.aurora_ribbons {
+            BackgroundEffectRequest::AuroraRibbons
+        } else if self.liquid_silk {
+            BackgroundEffectRequest::LiquidSilk
+        } else if self.grain {
             BackgroundEffectRequest::Grain
         } else {
             BackgroundEffectRequest::Disabled
         })
+    }
+
+    pub fn preset(&self) -> &'static str {
+        if self.wgsl {
+            "wgsl"
+        } else if self.neon_vortex {
+            "neon_vortex"
+        } else if self.aurora_ribbons {
+            "aurora_ribbons"
+        } else if self.liquid_silk {
+            "liquid_silk"
+        } else if self.grain {
+            "grain"
+        } else {
+            "off"
+        }
+    }
+
+    /// 一次切换只启用一个效果；保留自定义路径，不让路径本身变成执行授权。
+    pub fn selection_updates(preset: &str) -> Option<Vec<(&'static str, String)>> {
+        if !Self::PRESETS.contains(&preset) {
+            return None;
+        }
+        Some(
+            [
+                ("background_effect_grain", "grain"),
+                ("background_effect_neon_vortex", "neon_vortex"),
+                ("background_effect_aurora_ribbons", "aurora_ribbons"),
+                ("background_effect_liquid_silk", "liquid_silk"),
+                ("background_wgsl_enabled", "wgsl"),
+            ]
+            .into_iter()
+            .map(|(key, value)| (key, (value == preset).to_string()))
+            .collect(),
+        )
     }
 }
 
@@ -49,6 +107,26 @@ impl BackgroundEffects {
 mod tests {
     use super::*;
     use crate::{RuntimeSettings, apply_updates};
+
+    #[test]
+    fn switching_presets_is_exclusive_and_preserves_the_custom_path() {
+        let mut text = "background_wgsl_path=背景.wgsl\nunknown=keep\n".to_owned();
+        for preset in BackgroundEffects::PRESETS {
+            let updates = BackgroundEffects::selection_updates(preset).unwrap();
+            text = apply_updates(&text, &updates);
+            let effects = BackgroundEffects::from_raw(&RawSettings::from_text(&text));
+            assert_eq!(effects.preset(), *preset);
+            assert_eq!(effects.wgsl_path.as_deref(), Some("背景.wgsl"));
+            assert_eq!(
+                updates.iter().filter(|(_, value)| value == "true").count(),
+                usize::from(*preset != "off")
+            );
+            assert!(effects.request().is_ok());
+            assert!(text.contains("unknown=keep"));
+        }
+        assert!(BackgroundEffects::selection_updates("unknown").is_none());
+        assert_eq!(BackgroundEffects::default().preset(), "off");
+    }
 
     #[test]
     fn wgsl_authorization_round_trips_and_retired_keys_cannot_grant_execution() {
