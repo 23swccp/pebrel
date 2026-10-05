@@ -202,10 +202,14 @@ fn restart_media(kind: nebula_settings::BackgroundMediaKind, cx: &mut App) {
     if let Some(old) = old {
         let ready = old.read(cx).has_front();
         old.update(cx, |state, _| state.freeze());
-        if ready { cx.global_mut::<VisualEffects>().retired_video = Some(old); }
+        if ready {
+            cx.global_mut::<VisualEffects>().retired_video = Some(old);
+        }
     }
     let path = cx.global::<VisualEffects>().wallpaper.as_ref().map(|wp| wp.path.clone());
-    if path.is_none() { cx.global_mut::<VisualEffects>().retired_video.take(); }
+    if path.is_none() {
+        cx.global_mut::<VisualEffects>().retired_video.take();
+    }
     let next = path.map(|path| cx.new(|cx| playback::Playback::new(path, kind, cx)));
     cx.global_mut::<VisualEffects>().video = next;
 }
@@ -213,7 +217,9 @@ fn restart_media(kind: nebula_settings::BackgroundMediaKind, cx: &mut App) {
 pub(super) fn reload_media(cx: &mut App) {
     #[cfg(all(windows, feature = "video-background"))]
     if let Some(kind) = cx.try_global::<VisualEffects>().map(|effects| effects.kind)
-        && kind.is_animated() && media_available(kind) {
+        && kind.is_animated()
+        && media_available(kind)
+    {
         restart_media(kind, cx);
         cx.refresh_windows();
     }

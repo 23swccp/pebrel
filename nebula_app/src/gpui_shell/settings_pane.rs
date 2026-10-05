@@ -1099,18 +1099,20 @@ impl SettingsPane {
                 match result {
                     Ok(Ok(Some(paths))) => {
                         if let Some(path) = paths.first() {
-                        if let Some(value) = path.to_str() {
-                            pane.persist(
+                            if let Some(value) = path.to_str() {
+                                pane.persist(
                                     &[
                                         ("background_image", value.to_owned()),
                                         ("background_media_kind", kind.settings_value().to_owned()),
                                     ],
-                                cx,
-                            );
-                            if kind.is_animated() && old_path.as_deref() == Some(value)
-                                && pane.runtime.background_image.as_deref() == Some(value) {
-                                super::wallpaper::reload_media(cx);
-                            }
+                                    cx,
+                                );
+                                if kind.is_animated()
+                                    && old_path.as_deref() == Some(value)
+                                    && pane.runtime.background_image.as_deref() == Some(value)
+                                {
+                                    super::wallpaper::reload_media(cx);
+                                }
                             } else {
                                 super::wallpaper::show_media_error(kind, cx);
                             }
@@ -1186,12 +1188,21 @@ impl SettingsPane {
                             this.choose_background_image(cx);
                         })),
                 )
-                .when((video || gif) && has_image, |row| row.child(
-                    NebulaButton::new("background-media-reload")
-                        .label(language.text(crate::i18n::Message::WallpaperMediaReload))
-                        .disabled(self.media_picker.is_some() || !super::wallpaper::media_available(self.runtime.background_media_kind))
-                        .on_click(cx.listener(|_, _, _, cx| super::wallpaper::reload_media(cx)))
-                ))
+                .when((video || gif) && has_image, |row| {
+                    row.child(
+                        NebulaButton::new("background-media-reload")
+                            .label(language.text(crate::i18n::Message::WallpaperMediaReload))
+                            .disabled(
+                                self.media_picker.is_some()
+                                    || !super::wallpaper::media_available(
+                                        self.runtime.background_media_kind,
+                                    ),
+                            )
+                            .on_click(
+                                cx.listener(|_, _, _, cx| super::wallpaper::reload_media(cx)),
+                            ),
+                    )
+                })
                 .when_some(path_label, |row, name| {
                     row.child(
                         div()
