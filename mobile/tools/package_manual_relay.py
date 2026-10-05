@@ -30,6 +30,7 @@ def package(apk: Path, output: Path, commit: str) -> None:
             members[f"{arch}/SHA256SUMS"] = (record["sha256"] + "  pebrel-relay\n").encode()
     members["install.sh"] = (root / "relay-native/install.sh").read_bytes()
     members["INSTALL.md"] = (root / "relay-native/INSTALL.md").read_bytes()
+    members["LICENSE"] = (root.parent / "LICENSE").read_bytes()
     members["SOURCE_COMMIT"] = (commit + "\n").encode()
     output.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(output, "w:gz") as archive:

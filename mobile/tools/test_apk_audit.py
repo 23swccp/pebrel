@@ -138,6 +138,7 @@ class ManualRelayKitTest(unittest.TestCase):
                 self.assertEqual(archive.extractfile(root + "SOURCE_COMMIT").read(), (commit + "\n").encode())
                 self.assertIn(b"service-install", archive.extractfile(root + "install.sh").read())
                 self.assertIn(b"sha256sum -c", archive.extractfile(root + "INSTALL.md").read())
+                self.assertIn(b"GNU GENERAL PUBLIC LICENSE", archive.extractfile(root + "LICENSE").read())
                 for arch, machine in (("x86_64", 62), ("aarch64", 183)):
                     binary = archive.extractfile(root + arch + "/pebrel-relay").read()
                     self.assertEqual(binary, elf(machine))

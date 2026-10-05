@@ -91,3 +91,10 @@ The command writes the archive and its SHA256 sidecar. Creating a kit locally
 does not publish a Release or modify an existing public asset.
 
 此命令生成离线压缩包与 SHA256 校验文件，不会发布 Release 或修改公开资产。
+
+The product's GPL license is included as `LICENSE`. Public distribution also
+requires the native dependency notices corresponding to the bundled binaries;
+archive generation alone does not establish release readiness.
+
+产品 GPL 许可证包含在 `LICENSE` 中。公开分发还需配齐包内二进制对应的原生
+依赖许可声明；生成压缩包本身不代表已完成发布验收。
