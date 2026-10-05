@@ -268,7 +268,7 @@ mod cold_start_tests {
     #[test]
     fn configured_startup_directory_wins_over_the_launch_directory() {
         let home = PathBuf::from("C:/Users/fixture");
-        let configured = PathBuf::from("C:/Users/fixture/.claude");
+        let configured = PathBuf::from("C:/Users/fixture/workspace");
         assert_eq!(cold_start_cwd(Some(configured.clone()), Some(home)), Some(configured));
     }
 
