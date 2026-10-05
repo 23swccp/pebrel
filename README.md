@@ -201,6 +201,8 @@ did not include an offline relay kit. A source checkout containing that installe
 can use `mobile/tools/package_manual_relay.py` to generate a two-architecture Linux
 kit and SHA256 sidecar from a verified APK. The tool does not download executables
 or publish or replace Release assets.
+Older APKs also need Cargo dependency notices collected from their matching source;
+the installation guide includes those commands.
 
 ## Configure
 

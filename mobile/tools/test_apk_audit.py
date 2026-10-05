@@ -174,7 +174,7 @@ class ManualRelayKitTest(unittest.TestCase):
             verify_relay(old_apk, commit)
             with self.assertRaises(KeyError):
                 verify_relay(old_apk, commit, require_licenses=True)
-            with self.assertRaises(KeyError):
+            with self.assertRaisesRegex(ValueError, "--licenses"):
                 package_manual(old_apk, Path(directory) / "missing-notices.tar.gz", commit)
             self.assertFalse((Path(directory) / "missing-notices.tar.gz").exists())
             notices = Path(directory) / "notices"
@@ -265,15 +265,28 @@ class RelayNoticeTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_bundle(changed.__getitem__, commit, "x86_64")
 
-    def test_dependency_walk_excludes_dev_only_and_unrelated_packages(self):
-        packages = [{"id": "root", "name": "pebrel-mobile-link", "source": None},
-                    *({"id": name, "name": name, "source": "registry"} for name in ("normal", "build", "dev", "unrelated"))]
-        metadata = {"packages": packages, "resolve": {"nodes": [
-            {"id": "root", "deps": [{"pkg": "normal", "dep_kinds": [{"kind": None}]},
-                                      {"pkg": "build", "dep_kinds": [{"kind": "build"}]},
-                                      {"pkg": "dev", "dep_kinds": [{"kind": "dev"}]}]},
-            *({"id": name, "deps": []} for name in ("normal", "build", "dev", "unrelated"))]}}
-        self.assertEqual([p["name"] for p in dependency_packages(metadata)], ["normal", "build"])
+    def test_target_tree_uses_only_listed_checksum_matched_registry_archives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "registry/cache/fixture/fixture-1.0.0.crate"
+            archive.parent.mkdir(parents=True)
+            manifest = b'[package]\nname="fixture"\nversion="1.0.0"\nlicense="MIT"\nauthors=["fixture author"]\n'
+            with tarfile.open(archive, "w:gz") as tar:
+                for name, data in (("Cargo.toml", manifest), ("LICENSE", b"license fixture")):
+                    info = tarfile.TarInfo("fixture-1.0.0/" + name)
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+            entry = {"name": "fixture", "version": "1.0.0", "source": "registry+https://example.invalid/index",
+                     "checksum": hashlib.sha256(archive.read_bytes()).hexdigest()}
+            lock = {"package": [entry, {"name": "unrelated", "version": "1.0.0"}]}
+            tree = "pebrel-mobile-link v0.1.0 (/source/mobile/link)\nfixture v1.0.0 (proc-macro)\nfixture v1.0.0 (proc-macro)\n"
+            packages = dependency_packages(tree, lock, root, root / "sources")
+            self.assertEqual([(p["name"], p["version"]) for p in packages], [("fixture", "1.0.0")])
+            self.assertEqual((Path(packages[0]["manifest_path"]).parent / "LICENSE").read_bytes(), b"license fixture")
+            with self.assertRaisesRegex(ValueError, "checksum-matched"):
+                dependency_packages(tree, {"package": [dict(entry, checksum="0" * 64)]}, root, root / "bad")
+            with self.assertRaisesRegex(ValueError, "registry dependency"):
+                dependency_packages("fixture v1.0.0 (https://example.invalid/source)", lock, root, root / "unsupported")
 
     def test_shared_collector_retains_texts_and_selects_only_allowed_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -297,7 +310,8 @@ class RelayNoticeTest(unittest.TestCase):
             self.assertIn("upstream-Cargo.toml", records[0]["texts"])
             legacy = collect_notices([dict(package, license="MIT/Apache-2.0")], root / "legacy", apache, sha)
             self.assertEqual(legacy[0]["selected_license"], "Apache-2.0")
-            for license in ("MIT", "MIT AND Apache-2.0", "MIT AND (BSD-3-Clause OR Apache-2.0)"):
+            for license in ("MIT", "MIT AND Apache-2.0", "MIT AND (BSD-3-Clause OR Apache-2.0)",
+                            "https://example.invalid/Apache-2.0"):
                 with self.assertRaises(ValueError):
                     collect_notices([dict(package, license=license)], root / "invalid", apache, sha)
             with self.assertRaises(ValueError):

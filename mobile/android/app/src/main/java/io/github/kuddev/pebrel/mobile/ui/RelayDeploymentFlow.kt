@@ -37,6 +37,7 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
     var advertisedAddress by remember { mutableStateOf("") }
     var advanced by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(false) }
+    var manualLinkFailed by remember { mutableStateOf(false) }
     var choosing by remember { mutableStateOf(false) }
     var addingHost by remember { mutableStateOf(false) }
     var savingHost by remember { mutableStateOf(false) }
@@ -181,6 +182,14 @@ fun RelayDeploymentFlow(repository: SessionRepository, onCancel: () -> Unit) {
             installProgress?.let { RelayInstallSteps(it, failure) }
             if (!busy) TextButton({ manual = !manual }) { Text(stringResource(R.string.service_manual_commands)) }
             if (manual) {
+                TextButton({
+                    manualLinkFailed = false
+                    try {
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://github.com/Kuddev/pebrel/releases")))
+                    } catch (_: Exception) { manualLinkFailed = true }
+                }) { Text(stringResource(R.string.service_manual_download)) }
+                if (manualLinkFailed) Text(stringResource(R.string.service_manual_download_failed), color = MaterialTheme.colorScheme.error)
                 HelperText(stringResource(R.string.service_manual_hint))
                 val relayAddress = runCatching {
                     NativeRelayDeployment.validatedAddress(advertisedAddress.ifBlank { host?.address ?: endpoint?.address.orEmpty() })

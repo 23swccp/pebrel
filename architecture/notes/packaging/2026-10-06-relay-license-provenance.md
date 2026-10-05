@@ -17,9 +17,11 @@ the relay workspace resolves tokio 1.50.0. Reusing that inventory by package nam
 would therefore omit dependencies and misidentify versions.
 
 `mobile/link/Cargo.toml` declares the relay feature and `Cargo.lock` pins its
-dependency versions. `cargo metadata --filter-platform` provides the resolved
-target graph; the shared workspace can activate a superset of this binary's
-features. This is sufficient for inclusive notices, not a minimal dependency BOM.
+dependency versions. An initial workspace metadata probe included 171/170
+dependencies and activated unrelated endpoint/preview features. It would also
+require unrelated workspace sources in a cold packaging cache. Package-selected
+`cargo tree` with the actual relay feature, target and normal/build edges resolves
+118/117 dependencies without those extra features.
 
 ## Decision
 Extract the existing transport license-text collection into `cargo_notices.py`.
@@ -28,11 +30,14 @@ Apache fallback. Retain Cargo's historical slash-separated alternatives; do not
 replace an AND/WITH obligation with a single fallback license.
 
 `relay_notices.py` binds an inventory to an exact source checkout and Linux target.
-It traverses the component's normal/build dependency closure, collects texts from
-the resolved Cargo sources, and hashes every declared notice plus the lockfile.
-Development-only and unrelated packages are excluded; workspace-unified features
-may still contribute extra legitimate notices. No handwritten crate allowlist
-decides coverage. Collection is offline after dependencies are available.
+Cargo selects the component's normal/build dependency closure. The collector reads
+the corresponding cached registry archives only after their checksums match the
+source lockfile, retains manifest attribution and license files, then hashes the
+notice inventory. It never unpacks arbitrary archive paths. Development-only and
+unrelated packages are excluded. No handwritten crate allowlist decides coverage.
+Collection is offline after dependency archives are available. The current graph
+is registry-only; a future path/Git dependency requires explicit source handling,
+not silently substituting another package with the same name and version.
 
 Native packaging stores notices beside each architecture's binary. APK release
 collection requires them; historical binary-only APK verification remains an
@@ -52,6 +57,8 @@ per-kit checksum sidecars remain staging outputs, not extra public assets.
 - Android SSH notices are a different graph and version set.
 - Copying a generic MIT/Apache text without package attribution loses provenance.
 - Maintaining a second copy of the transport collector lets license choices drift.
+- Workspace-wide metadata expands the selected feature set and can require
+  unrelated downloads; use the same package selection as the binary build.
 - Requiring old public APKs to contain newly introduced entries retroactively
   breaks historical verification; supplied source-bound notices repair their kits.
 - Downloading replacement relay binaries changes the code users intended to install.
@@ -66,15 +73,19 @@ wrong targets, escaped paths and damaged notices stop packaging.
 ## Validation
 The existing APK/installer tests cover complete kits, old APKs with supplied notices,
 missing notices, source/target/hash mismatch, path traversal and shared collection
-fallbacks. Real collection resolves 171 x86_64 and 170 aarch64 dependencies in the
-current workspace. Service installation tests use a recording fixture; they do
+fallbacks. Real collection resolves 118 x86_64 and 117 aarch64 dependencies in the
+selected relay build. Service installation tests use a recording fixture; they do
 not establish a real Linux installation or physical Android-device acceptance.
+The extracted transport collector retains its 237 dependency records and 462
+text files. Collection from the exact v2.1.1 checkout produces matching notices
+for the official APK; the resulting licensed manual kit is about 3.5 MB. These
+are archive measurements, not an application RSS or hot-path benchmark.
 Public Release assets remain unchanged until publication is separately selected.
 
 ## Supersedes
 None.
 
 ## Revisit when
-The relay feature graph, license expressions, Cargo metadata behavior or archive
+The relay feature graph, license expressions, Cargo tree output or registry archive
 layout changes. Recollect against the actual binary source rather than copying a
 previous version's inventory or broadening a failed check.

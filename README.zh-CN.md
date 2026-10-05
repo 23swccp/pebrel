@@ -181,6 +181,7 @@ Windows 与 macOS 提供原生更新安装；Linux 通过包管理器或新安�
 [离线中转安装说明](mobile/relay-native/INSTALL.md)。v2.1.1 最初的 Release
 资产没有离线中转包；包含上述安装器的源码提供 `mobile/tools/package_manual_relay.py`，
 可从经过校验的 APK 生成两种 Linux 架构的离线包和 SHA256 校验文件。
+旧 APK 还需配套源码生成的 Cargo 依赖许可材料，具体命令见上述说明。
 这个工具不下载可执行文件，也不会自动发布或替换 Release 资产。
 
 ## 配置

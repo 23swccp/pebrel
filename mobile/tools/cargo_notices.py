@@ -1,6 +1,7 @@
 """Shared collection of resolved Rust dependency license texts."""
 import hashlib
 from pathlib import Path
+import re
 import shutil
 
 
@@ -45,7 +46,9 @@ def collect(packages: list[dict], destination: Path, apache: Path, apache_sha256
             expression = " ".join((package.get("license") or "").split())
             # 旧 Cargo 清单使用 '/' 表达任选其一，保留该历史格式，但不推断 AND/WITH 组合。
             options = expression.replace("(", "").replace(")", "").replace("/", " OR ").split(" OR ")
-            if " AND " in expression or " WITH " in expression or "Apache-2.0" not in [option.strip() for option in options]:
+            options = [option.strip() for option in options]
+            if (" AND " in expression or " WITH " in expression or "Apache-2.0" not in options or
+                    any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+-]*", option) for option in options)):
                 raise ValueError(f"Missing license text for {package['name']}")
             target.mkdir(parents=True, exist_ok=True)
             shutil.copy2(apache, target / "Apache-2.0.txt")

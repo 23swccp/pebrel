@@ -30,7 +30,11 @@ def package(apk: Path, output: Path, commit: str, licenses: Path | None = None) 
             members[f"{arch}/manifest.json"] = manifest
             members[f"{arch}/SHA256SUMS"] = (record["sha256"] + "  pebrel-relay\n").encode()
             def read(name: str) -> bytes:
-                with archive.open(f"{prefix}/licenses/{name}") as stream:
+                try:
+                    stream = archive.open(f"{prefix}/licenses/{name}")
+                except KeyError as error:
+                    raise ValueError("APK relay notices are incomplete; supply source-matched notices with --licenses") from error
+                with stream:
                     return bounded_read(stream)
             # 旧 APK 的补充材料也必须匹配二进制源码与目标，不能用 Android SSH 许可代替。
             notice_reader = directory_reader(licenses / arch) if licenses is not None else read
