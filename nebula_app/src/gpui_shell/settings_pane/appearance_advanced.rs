@@ -29,6 +29,13 @@ impl SettingsPane {
                 cx,
             ))
             .child(self.shader_source_row(cx))
+            .child(self.terminal_effect_row(cx))
+            .child(self.select_row(
+                "terminal_effect_animation",
+                language.text(crate::i18n::Message::TerminalEffectAnimation),
+                language.text(crate::i18n::Message::TerminalEffectAnimationDescription),
+                cx,
+            ))
             .child(self.select_row(
                 "background_image_fit",
                 language.pick("背景图像拉伸模式", "Background image fit"),

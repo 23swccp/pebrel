@@ -54,6 +54,8 @@ pub struct VisualEffects {
     kind: nebula_settings::BackgroundMediaKind,
     layout: WallpaperLayout,
     effect_config: nebula_settings::BackgroundEffects,
+    terminal_config: nebula_settings::TerminalEffects,
+    terminal_reload: u64,
     #[cfg(all(windows, feature = "shader-background"))]
     shader: Option<gpui::Entity<shader::Shader>>,
     #[cfg(all(windows, feature = "video-background"))]
@@ -125,6 +127,8 @@ fn update_wallpaper(
             kind: nebula_settings::BackgroundMediaKind::Image,
             layout: WallpaperLayout::default(),
             effect_config: nebula_settings::BackgroundEffects::default(),
+            terminal_config: nebula_settings::TerminalEffects::default(),
+            terminal_reload: 0,
             #[cfg(all(windows, feature = "shader-background"))]
             shader: None,
             #[cfg(all(windows, feature = "video-background"))]
@@ -170,6 +174,7 @@ fn update_wallpaper(
     };
     effects.generation.fetch_add(1, Ordering::Release);
     retire_image(retired, cx);
+    cx.global_mut::<VisualEffects>().terminal_config = rt.terminal_effects.clone();
     refresh_shader(rt, cx);
     if rt.background_media_kind.is_animated() {
         #[cfg(all(windows, feature = "video-background"))]
@@ -1023,6 +1028,8 @@ pub(crate) fn test_install_visual_effects(cx: &mut App, opacity: f32, blur: Blur
         kind: nebula_settings::BackgroundMediaKind::Image,
         layout: WallpaperLayout::default(),
         effect_config: nebula_settings::BackgroundEffects::default(),
+        terminal_config: nebula_settings::TerminalEffects::default(),
+        terminal_reload: 0,
         #[cfg(all(windows, feature = "shader-background"))]
         shader: None,
         #[cfg(all(windows, feature = "video-background"))]
@@ -1238,6 +1245,47 @@ pub(super) fn show_media_error(kind: nebula_settings::BackgroundMediaKind, cx: &
                     text,
                 );
             });
+        }
+    });
+}
+
+pub(super) fn terminal_effect_configuration(cx: &App) -> (nebula_settings::TerminalEffects, u64) {
+    cx.try_global::<VisualEffects>()
+        .map(|effects| (effects.terminal_config.clone(), effects.terminal_reload))
+        .unwrap_or_default()
+}
+
+pub(super) fn reload_terminal_effects(cx: &mut App) {
+    if cx.has_global::<VisualEffects>() {
+        let effects = cx.global_mut::<VisualEffects>();
+        effects.terminal_reload = effects.terminal_reload.wrapping_add(1);
+    }
+    cx.refresh_windows();
+}
+
+#[cfg(all(windows, feature = "shader-background"))]
+pub(super) fn effect_gpu_budget(cx: &mut App) -> Arc<gpui::StreamImageBudget> {
+    playback::gpu_budget(cx)
+}
+#[cfg(all(windows, feature = "shader-background"))]
+pub(super) fn effect_compiler_budget(cx: &mut App) -> gpui::StreamImageBudgets {
+    shader::compiler_budget(cx)
+}
+
+#[cfg(all(windows, feature = "shader-background"))]
+pub(super) fn show_terminal_effect_error(handle: gpui::AnyWindowHandle, cx: &mut App) {
+    cx.defer(move |cx| {
+        let text = crate::gpui_shell::config::ui_language(cx)
+            .text(crate::i18n::Message::TerminalEffectFailed);
+        if let Err(error) = handle.update(cx, |_, window, cx| {
+            crate::gpui_shell::toast::toast(
+                window,
+                cx,
+                crate::gpui_shell::toast::ToastKind::Warning,
+                text,
+            );
+        }) {
+            log::debug!("effect window was released: {error}");
         }
     });
 }

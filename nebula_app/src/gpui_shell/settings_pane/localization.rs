@@ -17,6 +17,11 @@ pub(super) fn localized_select_labels(
             .collect();
     }
     let labels: Vec<&'static str> = match key {
+        "terminal_effect_animation" => vec![
+            language.text(crate::i18n::Message::TerminalEffectAnimationOff),
+            language.text(crate::i18n::Message::TerminalEffectAnimationFocused),
+            language.text(crate::i18n::Message::TerminalEffectAnimationAlways),
+        ],
         "background_shader_preset" => vec![
             language.text(crate::i18n::Message::WallpaperShaderOff),
             language.text(crate::i18n::Message::WallpaperShaderGrain),

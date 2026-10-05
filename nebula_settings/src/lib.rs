@@ -23,6 +23,8 @@ mod background_media;
 pub use background_media::BackgroundMediaKind;
 mod background_effects;
 pub use background_effects::{BackgroundEffectRequest, BackgroundEffects};
+mod terminal_effects;
+pub use terminal_effects::{EffectAnimation, TerminalEffects};
 mod cursor_motion;
 mod custom_theme;
 pub use cursor_motion::CursorMotion;
@@ -1090,6 +1092,7 @@ pub struct RuntimeSettings {
     pub background_image_cover_chrome: bool,
     /// Local opt-in only; theme packages cannot authorize shader execution.
     pub background_effects: BackgroundEffects,
+    pub terminal_effects: TerminalEffects,
     pub panel_resize: bool,
     /// 左侧 Tab 栏逻辑宽；与旧壳的持久化键、钳制范围共用。
     pub sidebar_width: f32,
@@ -1260,8 +1263,10 @@ impl RuntimeSettings {
                 .filter(|v| !v.is_empty())
                 .map(str::to_owned),
             // 默认 0.38：旧壳 display/settings 同值（壁纸压不过文字）。
-            background_media_kind: raw.value("background_media_kind")
-                .and_then(BackgroundMediaKind::parse).unwrap_or_default(),
+            background_media_kind: raw
+                .value("background_media_kind")
+                .and_then(BackgroundMediaKind::parse)
+                .unwrap_or_default(),
             background_image_opacity: raw
                 .f32("background_image_opacity")
                 .map(|o| o.clamp(0.0, 1.0))
@@ -1272,6 +1277,7 @@ impl RuntimeSettings {
                 .bool_on("background_image_cover_chrome")
                 .unwrap_or(false),
             background_effects: BackgroundEffects::from_raw(raw),
+            terminal_effects: TerminalEffects::from_raw(raw),
             panel_resize: raw.bool_on("panel_resize").unwrap_or(true),
             sidebar_width: raw
                 .f32("sidebar_w")

@@ -87,13 +87,7 @@ impl Shader {
             });
         });
         cx.on_release(|this, _| this.cancel()).detach();
-        if !cx.has_global::<CompileBudget>() {
-            cx.set_global(CompileBudget(StreamImageBudget::with_allocation_limit(1, 1)));
-        }
-        let jobs = StreamImageBudgets::new(
-            StreamImageBudget::with_allocation_limit(1, 1),
-            cx.global::<CompileBudget>().0.clone(),
-        );
+        let jobs = compiler_budget(cx);
         let gpu = StreamImageBudgets::new(
             StreamImageBudget::new(16 * 1024 * 1024),
             super::playback::gpu_budget(cx),
@@ -433,4 +427,14 @@ impl Shader {
             }
         });
     }
+}
+
+pub(super) fn compiler_budget(cx: &mut App) -> StreamImageBudgets {
+    if !cx.has_global::<CompileBudget>() {
+        cx.set_global(CompileBudget(StreamImageBudget::with_allocation_limit(1, 1)));
+    }
+    StreamImageBudgets::new(
+        StreamImageBudget::with_allocation_limit(1, 1),
+        cx.global::<CompileBudget>().0.clone(),
+    )
 }

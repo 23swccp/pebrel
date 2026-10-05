@@ -64,6 +64,13 @@ impl SettingsPane {
             selects.push((key, select, values));
         };
 
+        add_select(
+            "terminal_effect_animation",
+            nebula_settings::EffectAnimation::VALUES,
+            runtime.terminal_effects.animation.settings_value(),
+            window,
+            cx,
+        );
         let cursor_current =
             runtime.cursor_shape.map(|shape| shape.settings_value()).unwrap_or("beam");
         add_select(
@@ -618,6 +625,7 @@ impl SettingsPane {
             appearance_picker: None,
             appearance_picker_seq: 0,
             shader_picker: None,
+            terminal_effect_picker: None,
             media_picker: None,
             media_picker_generation: 0,
             theme_editor: None,

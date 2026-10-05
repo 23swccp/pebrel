@@ -1,7 +1,10 @@
 //! 显式启用后才在后台读取和编译；绘制阶段只接收已验证的字节码。
 use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use nebula_settings::{BackgroundEffectRequest, BackgroundEffects};
-use std::{ffi::CString, io::Read, sync::Arc};
+use std::{io::Read, sync::Arc};
+#[path = "native_compile.rs"]
+mod native;
+use native::compile as native_compile;
 
 const SOURCE_LIMIT: usize = 64 * 1024;
 const GRAIN: &str = r#"
@@ -132,52 +135,6 @@ fn translate(source: &str) -> Result<(String, String, bool)> {
         .context("missing translated entry")?
         .map_err(|error| anyhow!("{error:?}"))?;
     Ok((hlsl, name, animated))
-}
-
-fn native_compile(hlsl: &str, entry: &str) -> Result<Arc<[u8]>> {
-    use windows::{
-        Win32::Graphics::Direct3D::{Fxc::*, ID3DInclude},
-        core::{PCSTR, s},
-    };
-    let entry = CString::new(entry)?;
-    let mut bytecode = None;
-    let mut diagnostics = None;
-    let result = unsafe {
-        D3DCompile(
-            hlsl.as_ptr().cast(),
-            hlsl.len(),
-            PCSTR::null(),
-            None,
-            None::<&ID3DInclude>,
-            PCSTR(entry.as_ptr().cast()),
-            s!("ps_4_1"),
-            D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3,
-            0,
-            &mut bytecode,
-            Some(&mut diagnostics),
-        )
-    };
-    if let Err(error) = result {
-        let detail = diagnostics
-            .map(|blob| unsafe {
-                String::from_utf8_lossy(std::slice::from_raw_parts(
-                    blob.GetBufferPointer().cast(),
-                    blob.GetBufferSize().min(4096),
-                ))
-                .into_owned()
-            })
-            .unwrap_or_default();
-        bail!("background native compilation failed: {error}: {detail}");
-    }
-    let blob = bytecode.context("native compiler returned no bytecode")?;
-    let bytes = unsafe {
-        std::slice::from_raw_parts(blob.GetBufferPointer().cast::<u8>(), blob.GetBufferSize())
-    };
-    ensure!(
-        bytes.len() <= SOURCE_LIMIT && bytes.starts_with(b"DXBC"),
-        "invalid background bytecode"
-    );
-    Ok(Arc::from(bytes))
 }
 
 #[cfg(test)]

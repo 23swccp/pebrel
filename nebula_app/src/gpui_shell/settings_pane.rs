@@ -54,6 +54,7 @@ mod scrolling;
 mod search_header;
 mod segmented;
 mod setting_help;
+mod terminal_effect;
 mod theme_picker;
 
 mod initialization;
@@ -114,6 +115,7 @@ pub struct SettingsPane {
     appearance_picker: Option<appearance_picker::AppearancePicker>,
     appearance_picker_seq: u64,
     shader_picker: Option<Task<()>>,
+    terminal_effect_picker: Option<Task<()>>,
     media_picker: Option<Task<()>>,
     media_picker_generation: u64,
     pub(super) theme_editor: Option<theme_editor::ThemeEditor>,
@@ -779,6 +781,10 @@ impl SettingsPane {
             "panel_resize" => flag!(panel_resize),
             "background_image_cover_chrome" => flag!(background_image_cover_chrome),
             "background_media_kind" => pick!(background_media_kind),
+            "terminal_effect_animation" => Some((
+                cur.terminal_effects.animation != def.terminal_effects.animation,
+                def.terminal_effects.animation.settings_value().to_owned(),
+            )),
             "background_shader_preset" => {
                 Some((cur.background_effects.preset() != "off", "off".to_owned()))
             },
