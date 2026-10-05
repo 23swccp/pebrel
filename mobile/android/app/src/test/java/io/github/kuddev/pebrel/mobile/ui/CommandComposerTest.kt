@@ -291,11 +291,15 @@ class CommandComposerTest {
         compose.onNodeWithText(context.getString(R.string.deploy_domain)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.deploy_http_port)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.service_port)).assertDoesNotExist()
-        compose.onNodeWithText(context.getString(R.string.service_advanced)).performClick()
+        compose.onNodeWithText(context.getString(R.string.service_advanced)).performScrollTo().performClick()
         compose.onNodeWithContentDescription(context.getString(R.string.service_port)).assertExists()
         compose.onNodeWithContentDescription(context.getString(R.string.service_address)).assertExists()
         compose.onNodeWithText(context.getString(R.string.service_manual_commands)).performScrollTo().performClick()
         compose.onNodeWithText("sh install.sh 'SERVER_IP' 443\n/opt/pebrel-relay/pebrel-relay service-status").assertExists()
+        compose.onNodeWithText(context.getString(R.string.service_manual_download)).performScrollTo().performClick()
+        val opened = org.robolectric.Shadows.shadowOf(context).nextStartedActivity
+        assertEquals(android.content.Intent.ACTION_VIEW, opened.action)
+        assertEquals("https://github.com/Kuddev/pebrel/releases", opened.dataString)
     }
 
     @Test fun servicePageAllowsAnUnencryptedKeyAndSeparatesItsPassphraseFromAPassword() {
