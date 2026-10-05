@@ -153,6 +153,7 @@ sha1 = "0.11.0"
 
 raw-window-handle = { version = "=0.6.2", optional = true }
 naga = { version = "=29.0.4", optional = true, features = ["wgsl-in", "hlsl-out"] }
+gif = { version = "=0.14.2", optional = true }
 
 [build-dependencies]
 nebula-settings = { path = "../nebula_settings", version = "2.1.1" }
@@ -316,7 +317,8 @@ gpui-shell = [
 # 真实 GPUI hitbox / 鼠标路由测试显式启用；不能放进 dev-dependencies，
 # 否则不带 gpui-shell 的默认 `cargo test -p nebula` 也会编译整棵 GPUI。
 video-background = ["gpui-shell", "dep:anyhow", "dep:raw-window-handle", "windows/Win32_Media_MediaFoundation"]
-shader-background = ["video-background", "dep:naga", "windows/Win32_Graphics_Direct3D_Fxc"]
+gif-background = ["video-background", "dep:gif"]
+shader-background = ["gif-background", "dep:naga", "windows/Win32_Graphics_Direct3D_Fxc"]
 gpui-test-support = ["gpui-shell", "gpui/test-support", "gpui-component/test-support"]
 # Explicit local updater acceptance harness; compile-rejected in release builds.
 update-test-source = ["gpui-shell"]

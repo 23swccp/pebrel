@@ -27,6 +27,7 @@ struct Placement {
 
 pub(super) struct Playback {
     path: PathBuf,
+    kind: nebula_settings::BackgroundMediaKind,
     front: Option<Arc<Front>>,
     pending: Option<Arc<Front>>,
     cursor: Option<video::Cursor>,
@@ -41,6 +42,7 @@ pub(super) struct Playback {
     presentable: bool,
     frozen: bool,
     enabled: bool,
+    ended: bool,
     placements: HashMap<WindowId, Placement>,
     cpu: StreamImageBudgets,
     jobs: StreamImageBudgets,
@@ -81,7 +83,11 @@ pub(super) fn gpu_budget(cx: &mut App) -> Arc<StreamImageBudget> {
 }
 
 impl Playback {
-    pub fn new(path: PathBuf, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        path: PathBuf,
+        kind: nebula_settings::BackgroundMediaKind,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let weak = cx.weak_entity();
         let closed = cx.on_window_closed(move |cx, id| {
             let _ = weak.update(cx, |this, cx| {
@@ -98,6 +104,7 @@ impl Playback {
         let decoder_global = cx.global::<GlobalBudgets>().decoder.clone();
         Self {
             path,
+            kind,
             front: None,
             pending: None,
             cursor: None,
@@ -112,6 +119,7 @@ impl Playback {
             presentable: false,
             frozen: false,
             enabled: true,
+            ended: false,
             placements: HashMap::new(),
             cpu: StreamImageBudgets::new(
                 StreamImageBudget::with_allocation_limit(32 * 1024 * 1024, 8),
@@ -174,6 +182,7 @@ impl Playback {
 
     fn permitted(&self, cx: &App) -> bool {
         self.enabled
+            && !self.ended
             && !self.failed
             && !self.frozen
             && !cx.reduce_motion()
@@ -189,6 +198,7 @@ impl Playback {
         // Closing the last placement cancels the owning worker. Reopening waits
         // for its pending result to be refused before starting a fresh source.
         if !self.producing
+            && !self.ended
             && !self.frozen
             && !self.failed
             && !self.placements.is_empty()
@@ -205,7 +215,7 @@ impl Playback {
             self.generation = self.generation.wrapping_add(1);
             self.timer.take();
         }
-        if self.failed || self.frozen || !self.enabled || self.placements.is_empty() {
+        if self.failed || self.frozen || self.ended || !self.enabled || self.placements.is_empty() {
             return;
         }
         if self.front.is_none() && !self.producing {
@@ -257,6 +267,7 @@ impl Playback {
         self.producing = true;
         let mut cursor = self.cursor.take();
         let path = self.path.clone();
+        let kind = self.kind;
         let cpu = self.cpu.clone();
         let jobs = self.jobs.clone();
         let ui_thread = self.ui_thread;
@@ -278,15 +289,26 @@ impl Playback {
             let result = (|| {
                 anyhow::ensure!(!cancellation.load(Ordering::Acquire), "video request cancelled");
                 if cursor.is_none() {
-                    cursor = Some(video::Cursor::start(
-                        path,
-                        cpu,
-                        jobs,
-                        ui_thread,
-                        cancellation.clone(),
-                    )?);
+                    cursor = Some(match kind {
+                        nebula_settings::BackgroundMediaKind::Video => {
+                            video::Cursor::start(path, cpu, jobs, ui_thread, cancellation.clone())?
+                        },
+                        #[cfg(feature = "gif-background")]
+                        nebula_settings::BackgroundMediaKind::Gif => video::Cursor::start_gif(
+                            path,
+                            cpu,
+                            jobs,
+                            ui_thread,
+                            cancellation.clone(),
+                        )?,
+                        _ => anyhow::bail!("animated background kind is unavailable"),
+                    });
                 }
-                cursor.as_mut().unwrap().next_looping().map(|frame| Arc::new(Front { frame }))
+                cursor
+                    .as_mut()
+                    .unwrap()
+                    .next_frame()
+                    .map(|frame| frame.map(|frame| Arc::new(Front { frame })))
             })();
             (cursor, result)
         });
@@ -301,8 +323,14 @@ impl Playback {
                 }
                 this.cursor = cursor;
                 match result {
-                    Ok(front) => {
+                    Ok(Some(front)) => {
                         this.pending = Some(front);
+                        this.reconcile(cx);
+                    },
+                    Ok(None) => {
+                        // 有限循环 GIF 停在末帧，不把正常结束当错误，也不重新启动解码器。
+                        this.ended = true;
+                        this.cursor.take();
                         this.reconcile(cx);
                     },
                     Err(error) => {
@@ -310,7 +338,7 @@ impl Playback {
                         this.failed = true;
                         this.timer.take();
                         this.cursor.take();
-                        super::show_video_error(cx);
+                        super::show_media_error(this.kind, cx);
                     },
                 }
             });
@@ -368,7 +396,7 @@ impl Playback {
                     log::warn!("video background completion failed: {error:#}");
                     this.failed = true;
                     this.cancel();
-                    super::show_video_error(cx);
+                    super::show_media_error(this.kind, cx);
                 } else {
                     this.reconcile(cx);
                 }
@@ -389,7 +417,7 @@ impl Playback {
         if !self.failed {
             self.failed = true;
             self.cancel();
-            super::show_video_error(cx);
+            super::show_media_error(self.kind, cx);
             cx.defer(super::refresh_surface_opacity);
         }
     }
@@ -403,6 +431,7 @@ impl Playback {
         self.pending.take();
         self.front.take();
         self.presentable = false;
+        self.ended = false;
         if let Some(mut cursor) = self.cursor.take() {
             cursor.close();
         }

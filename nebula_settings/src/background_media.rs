@@ -4,15 +4,17 @@ pub enum BackgroundMediaKind {
     #[default]
     Image,
     Video,
+    Gif,
 }
 
 impl BackgroundMediaKind {
-    pub const VALUES: &'static [&'static str] = &["image", "video"];
+    pub const VALUES: &'static [&'static str] = &["image", "video", "gif"];
 
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "image" => Some(Self::Image),
             "video" => Some(Self::Video),
+            "gif" => Some(Self::Gif),
             _ => None,
         }
     }
@@ -21,7 +23,12 @@ impl BackgroundMediaKind {
         match self {
             Self::Image => "image",
             Self::Video => "video",
+            Self::Gif => "gif",
         }
+    }
+
+    pub fn is_animated(self) -> bool {
+        matches!(self, Self::Video | Self::Gif)
     }
 }
 
@@ -34,9 +41,13 @@ mod tests {
         assert_eq!(BackgroundMediaKind::default(), BackgroundMediaKind::Image);
         assert_eq!(BackgroundMediaKind::parse("VIDEO"), Some(BackgroundMediaKind::Video));
         assert_eq!(BackgroundMediaKind::parse("movie.mp4"), None);
-        for kind in [BackgroundMediaKind::Image, BackgroundMediaKind::Video] {
+        for kind in
+            [BackgroundMediaKind::Image, BackgroundMediaKind::Video, BackgroundMediaKind::Gif]
+        {
             assert_eq!(BackgroundMediaKind::parse(kind.settings_value()), Some(kind));
         }
+        assert!(!BackgroundMediaKind::Image.is_animated());
+        assert!(BackgroundMediaKind::Gif.is_animated());
     }
 
     #[test]

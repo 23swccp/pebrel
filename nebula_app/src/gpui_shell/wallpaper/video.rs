@@ -1,4 +1,4 @@
-//! Demand-driven video decoding. Native decoder objects stay on one owning worker.
+//! Demand-driven animated-media decoding. Decoder objects stay on one owning worker.
 //! This private adapter is exercised by the media lab before product activation.
 #[cfg(windows)]
 #[path = "video/media_foundation.rs"]
@@ -20,7 +20,7 @@ use std::{
 pub struct Frame {
     pub width: u32,
     pub height: u32,
-    /// Tightly packed top-down BGRA; RGB32's unused alpha is made opaque.
+    /// Tightly packed top-down premultiplied BGRA; native RGB32 is made opaque.
     pub pixels: Vec<u8>,
     pub delay: Duration,
     pub pts_100ns: i64,
@@ -30,7 +30,7 @@ pub struct Frame {
     pub lease: StreamImageLease,
 }
 
-type Reply = SyncSender<Result<Frame>>;
+type Reply = SyncSender<Result<Option<Frame>>>;
 
 /// Closing revokes future results without waiting on a native call on the UI thread.
 pub struct Cursor {
@@ -72,7 +72,7 @@ impl Cursor {
                         if reader.is_none() {
                             reader = Some(media_foundation::Reader::open(&path, budgets.clone())?);
                         }
-                        reader.as_mut().unwrap().next_looping(&cancelled)
+                        reader.as_mut().unwrap().next_looping(&cancelled).map(Some)
                     })();
                     if cancelled.load(Ordering::Acquire) {
                         break;
@@ -92,6 +92,64 @@ impl Cursor {
         }
     }
 
+    #[cfg(feature = "gif-background")]
+    pub fn start_gif(
+        path: PathBuf,
+        budgets: StreamImageBudgets,
+        jobs: StreamImageBudgets,
+        ui_thread: ThreadId,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<Self> {
+        Self::spawn(jobs, ui_thread, cancelled, move |requests, cancelled| {
+            let mut reader = None;
+            let mut owned = None;
+            let mut pts = 0i64;
+            for reply in requests {
+                if cancelled.load(Ordering::Acquire) {
+                    break;
+                }
+                let result = (|| {
+                    if reader.is_none() {
+                        // 预先计入画布、patch、restore、解码器及循环切换时短暂重叠的读取器。
+                        owned = Some(budgets.reserve(21 * 1024 * 1024)?);
+                        reader = Some(
+                            super::gif_decoder::Cursor::open(&path).map_err(anyhow::Error::msg)?,
+                        );
+                    }
+                    let lease = budgets.reserve(super::gif_decoder::MAX_FRAME_BYTES)?;
+                    let cursor = reader.as_mut().unwrap();
+                    let Some(decoded) = cursor.next_looping().map_err(anyhow::Error::msg)? else {
+                        return Ok(None);
+                    };
+                    let (width, height) = decoded.pixels.dimensions();
+                    let frame = Frame {
+                        width,
+                        height,
+                        pixels: decoded.pixels.into_raw(),
+                        delay: decoded.delay,
+                        pts_100ns: pts,
+                        sequence: decoded.sequence,
+                        loops: cursor.loops_done(),
+                        lease,
+                    };
+                    pts = pts.saturating_add(
+                        (decoded.delay.as_nanos() / 100).min(i64::MAX as u128) as i64,
+                    );
+                    Ok(Some(frame))
+                })();
+                if cancelled.load(Ordering::Acquire) {
+                    break;
+                }
+                let stopped = result.as_ref().is_ok_and(Option::is_none) || result.is_err();
+                if reply.send(result).is_err() || stopped {
+                    break;
+                }
+            }
+            drop(reader);
+            drop(owned);
+        })
+    }
+
     fn spawn(
         budgets: StreamImageBudgets,
         ui_thread: ThreadId,
@@ -103,7 +161,7 @@ impl Cursor {
         let worker_cancelled = cancelled.clone();
         let exited = Arc::new(AtomicBool::new(false));
         let notice = ExitNotice { permit: Some(permit), exited: exited.clone() };
-        thread::Builder::new().name("wallpaper-video".into()).spawn(move || {
+        thread::Builder::new().name("wallpaper-media".into()).spawn(move || {
             let _notice = notice;
             run(requests, worker_cancelled);
         })?;
@@ -112,6 +170,10 @@ impl Cursor {
 
     /// One request and one response. Call from a background executor, never during paint.
     pub fn next_looping(&mut self) -> Result<Frame> {
+        self.next_frame()?.ok_or_else(|| anyhow::anyhow!("animated source reached its end"))
+    }
+
+    pub fn next_frame(&mut self) -> Result<Option<Frame>> {
         ensure!(thread::current().id() != self.ui_thread, "video decode requested on UI thread");
         ensure!(!self.cancelled.load(Ordering::Acquire), "video source closed");
         let (reply, response) = sync_channel(1);
@@ -215,6 +277,45 @@ mod tests {
     use std::sync::mpsc::channel;
     use std::time::Instant;
 
+    #[cfg(feature = "gif-background")]
+    #[test]
+    fn finite_gif_worker_reports_end_and_retains_only_the_last_frame_lease() {
+        let name = format!("pebrel-gif-worker-{}-{}.gif", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+        let path = std::env::temp_dir().join(name);
+        {
+            let file = std::fs::OpenOptions::new().create_new(true).write(true).open(&path).unwrap();
+            let mut encoder = gif::Encoder::new(file, 2, 2, &[255, 0, 0]).unwrap();
+            encoder.write_frame(&gif::Frame { width: 2, height: 2, delay: 4,
+                buffer: std::borrow::Cow::Owned(vec![0; 4]), ..Default::default() }).unwrap();
+        }
+        let local = StreamImageBudget::new(32 * 1024 * 1024);
+        let global = StreamImageBudget::new(96 * 1024 * 1024);
+        let worker = StreamImageBudget::with_allocation_limit(1, 1);
+        let mut cursor = Cursor::start_gif(path.clone(),
+            StreamImageBudgets::new(local.clone(), global.clone()),
+            StreamImageBudgets::new(StreamImageBudget::with_allocation_limit(1, 1), worker.clone()),
+            thread::current().id(), Arc::default()).unwrap();
+        let exited = cursor.exit_witness();
+        let frame = thread::spawn(move || {
+            let frame = cursor.next_frame().unwrap().unwrap();
+            assert_eq!(&frame.pixels[..4], &[0, 0, 255, 255]);
+            assert!(cursor.next_frame().unwrap().is_none());
+            frame
+        }).join().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !exited.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline);
+            thread::yield_now();
+        }
+        assert_eq!(worker.preparations(), 0);
+        assert_eq!(local.used(), super::super::gif_decoder::MAX_FRAME_BYTES);
+        assert!(local.peak() <= 32 * 1024 * 1024);
+        drop(frame);
+        assert_eq!((local.used(), global.used()), (0, 0));
+        std::fs::remove_file(path).unwrap();
+    }
+
     #[test]
     fn cancellation_during_work_refuses_late_pixels_without_releasing_early() {
         let local = StreamImageBudget::with_allocation_limit(16, 1);
@@ -233,7 +334,7 @@ mod tests {
                 let lease = bytes.reserve(4).unwrap();
                 started.send(()).unwrap();
                 resume_worker.recv().unwrap();
-                let _ = reply.send(Ok(Frame {
+                let _ = reply.send(Ok(Some(Frame {
                     width: 1,
                     height: 1,
                     pixels: vec![0, 0, 0, 255],
@@ -242,7 +343,7 @@ mod tests {
                     sequence: 1,
                     loops: 0,
                     lease,
-                }));
+                })));
             },
         )
         .unwrap();

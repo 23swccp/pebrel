@@ -618,6 +618,8 @@ impl SettingsPane {
             appearance_picker: None,
             appearance_picker_seq: 0,
             shader_picker: None,
+            media_picker: None,
+            media_picker_generation: 0,
             theme_editor: None,
             theme_editor_seq: 0,
             theme_transfer: theme_transfer::ThemeTransferState::default(),

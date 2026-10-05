@@ -28,6 +28,7 @@ pub(super) fn localized_select_labels(
         "background_media_kind" => vec![
             language.text(crate::i18n::Message::WallpaperImage),
             language.text(crate::i18n::Message::WallpaperVideo),
+            language.text(crate::i18n::Message::WallpaperGif),
         ],
         "language" => nebula_settings::LanguagePref::ALL
             .iter()

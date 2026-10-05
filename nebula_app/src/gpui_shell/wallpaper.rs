@@ -27,6 +27,8 @@ use gpui::{
 };
 use image::{Frame, RgbaImage};
 
+#[cfg(all(windows, feature = "gif-background"))]
+mod gif_decoder;
 mod image_loader;
 #[cfg(all(windows, feature = "video-background"))]
 mod playback;
@@ -169,23 +171,10 @@ fn update_wallpaper(
     effects.generation.fetch_add(1, Ordering::Release);
     retire_image(retired, cx);
     refresh_shader(rt, cx);
-    if rt.background_media_kind == nebula_settings::BackgroundMediaKind::Video {
+    if rt.background_media_kind.is_animated() {
         #[cfg(all(windows, feature = "video-background"))]
         if source_changed {
-            let old = cx.global_mut::<VisualEffects>().video.take();
-            if let Some(old) = old {
-                let ready = old.read(cx).has_front();
-                old.update(cx, |video, _| video.freeze());
-                if ready {
-                    cx.global_mut::<VisualEffects>().retired_video = Some(old);
-                }
-            }
-            let path = cx.global::<VisualEffects>().wallpaper.as_ref().map(|wp| wp.path.clone());
-            if path.is_none() {
-                cx.global_mut::<VisualEffects>().retired_video.take();
-            }
-            let prepared = path.map(|path| cx.new(|cx| playback::Playback::new(path, cx)));
-            cx.global_mut::<VisualEffects>().video = prepared;
+            restart_media(rt.background_media_kind, cx);
         }
         #[cfg(all(windows, feature = "video-background"))]
         if let Some(actor) = cx.global::<VisualEffects>().video.clone() {
@@ -194,7 +183,7 @@ fn update_wallpaper(
         }
         #[cfg(not(all(windows, feature = "video-background")))]
         if source_changed {
-            show_video_error(cx);
+            show_media_error(rt.background_media_kind, cx);
         }
     } else {
         #[cfg(all(windows, feature = "video-background"))]
@@ -207,9 +196,32 @@ fn update_wallpaper(
     }
 }
 
+#[cfg(all(windows, feature = "video-background"))]
+fn restart_media(kind: nebula_settings::BackgroundMediaKind, cx: &mut App) {
+    let old = cx.global_mut::<VisualEffects>().video.take();
+    if let Some(old) = old {
+        let ready = old.read(cx).has_front();
+        old.update(cx, |state, _| state.freeze());
+        if ready { cx.global_mut::<VisualEffects>().retired_video = Some(old); }
+    }
+    let path = cx.global::<VisualEffects>().wallpaper.as_ref().map(|wp| wp.path.clone());
+    if path.is_none() { cx.global_mut::<VisualEffects>().retired_video.take(); }
+    let next = path.map(|path| cx.new(|cx| playback::Playback::new(path, kind, cx)));
+    cx.global_mut::<VisualEffects>().video = next;
+}
+
+pub(super) fn reload_media(cx: &mut App) {
+    #[cfg(all(windows, feature = "video-background"))]
+    if let Some(kind) = cx.try_global::<VisualEffects>().map(|effects| effects.kind)
+        && kind.is_animated() && media_available(kind) {
+        restart_media(kind, cx);
+        cx.refresh_windows();
+    }
+}
+
 fn start_load(cx: &mut App) {
     let effects = cx.global_mut::<VisualEffects>();
-    if effects.loading || effects.kind == nebula_settings::BackgroundMediaKind::Video {
+    if effects.loading || effects.kind.is_animated() {
         return;
     }
     let Some(wp) = effects.wallpaper.as_ref() else { return };
@@ -895,7 +907,7 @@ fn paint_wallpaper(bounds: Bounds<Pixels>, under_chrome: bool, window: &mut Wind
     let effects = cx.global::<VisualEffects>();
     let Some(wp) = effects.wallpaper.as_ref() else { return };
     #[cfg(all(windows, feature = "video-background"))]
-    if effects.kind == nebula_settings::BackgroundMediaKind::Video {
+    if effects.kind.is_animated() {
         let current = effects.video.clone();
         let fallback = effects.retired_video.clone();
         let fit = layout.fit;
@@ -1021,6 +1033,14 @@ pub(crate) fn test_apply_window_effects(cx: &mut App) {
 
 pub(super) fn video_available() -> bool {
     cfg!(all(windows, feature = "video-background"))
+}
+
+pub(super) fn media_available(kind: nebula_settings::BackgroundMediaKind) -> bool {
+    match kind {
+        nebula_settings::BackgroundMediaKind::Image => true,
+        nebula_settings::BackgroundMediaKind::Video => video_available(),
+        nebula_settings::BackgroundMediaKind::Gif => cfg!(all(windows, feature = "gif-background")),
+    }
 }
 
 pub(super) fn shader_available() -> bool {
@@ -1183,8 +1203,20 @@ fn background_ready(effects: &VisualEffects, cx: &App) -> bool {
     }
 }
 pub(super) fn show_video_error(cx: &mut App) {
+    show_media_error(nebula_settings::BackgroundMediaKind::Video, cx);
+}
+
+pub(super) fn show_media_error(kind: nebula_settings::BackgroundMediaKind, cx: &mut App) {
     use crate::i18n::Message;
-    let message = if video_available() {
+    let message = if kind == nebula_settings::BackgroundMediaKind::Image {
+        Message::WallpaperLoadFailed
+    } else if kind == nebula_settings::BackgroundMediaKind::Gif {
+        if media_available(kind) {
+            Message::WallpaperGifFailed
+        } else {
+            Message::WallpaperGifUnavailable
+        }
+    } else if video_available() {
         Message::WallpaperVideoFailed
     } else {
         Message::WallpaperVideoUnavailable

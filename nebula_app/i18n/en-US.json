@@ -870,7 +870,7 @@
     "kind": "Background source",
     "image": "Image",
     "video": "Video",
-    "kind_description": "Choose a still image or silent looping video. Video pauses while the window is in the background.",
+    "kind_description": "Choose a still image, silent looping video or animated GIF. Animations pause when inactive; image mode remains still.",
     "video_description": "Supports MP4/H.264. Reduced motion displays the first frame.",
     "choose_video": "Choose video",
     "video_prompt": "Select a terminal background video",
@@ -897,7 +897,15 @@
     "shader_confirm": "Enable custom WGSL?",
     "shader_confirm_description": "The selected local program will run on the GPU. Enable a file you trust; its runtime cost depends on its contents.",
     "shader_enable": "Enable",
-    "shader_cancel": "Cancel"
+    "shader_cancel": "Cancel",
+    "gif": "Animated GIF",
+    "gif_description": "Stream GIF frames with transparency, frame delays and loop counts. Pause when inactive; reduced motion keeps the first frame.",
+    "choose_gif": "Choose GIF",
+    "gif_prompt": "Select an animated GIF background",
+    "gif_failed": "The animated GIF could not be loaded. Check its file and dimensions, or choose another GIF.",
+    "gif_unavailable": "Animated GIF backgrounds are not enabled in this build or on this platform.",
+    "media_selecting": "Selecting?",
+    "media_reload": "Replay"
   },
   "update": {
     "managed_label": "Managed by installation source",

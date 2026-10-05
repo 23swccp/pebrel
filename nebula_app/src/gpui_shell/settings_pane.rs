@@ -114,6 +114,8 @@ pub struct SettingsPane {
     appearance_picker: Option<appearance_picker::AppearancePicker>,
     appearance_picker_seq: u64,
     shader_picker: Option<Task<()>>,
+    media_picker: Option<Task<()>>,
+    media_picker_generation: u64,
     pub(super) theme_editor: Option<theme_editor::ThemeEditor>,
     theme_editor_seq: u64,
     pub(super) theme_transfer: theme_transfer::ThemeTransferState,
@@ -1024,10 +1026,8 @@ impl SettingsPane {
         if kind == self.runtime.background_media_kind {
             return;
         }
-        if kind == nebula_settings::BackgroundMediaKind::Video
-            && !super::wallpaper::video_available()
-        {
-            self.error_video_unavailable(cx);
+        if !super::wallpaper::media_available(kind) {
+            super::wallpaper::show_media_error(kind, cx);
             self.sync_select(
                 "background_media_kind",
                 self.runtime.background_media_kind.settings_value(),
@@ -1036,6 +1036,8 @@ impl SettingsPane {
             );
             return;
         }
+        self.media_picker_generation = self.media_picker_generation.wrapping_add(1);
+        self.media_picker.take();
         self.persist(
             &[
                 ("background_media_kind", kind.settings_value().to_owned()),
@@ -1043,28 +1045,35 @@ impl SettingsPane {
             ],
             cx,
         );
-    }
-
-    fn error_video_unavailable(&mut self, cx: &mut Context<Self>) {
-        log::warn!("video background capability unavailable");
-        super::wallpaper::show_video_error(cx);
+        self.sync_select(
+            "background_media_kind",
+            self.runtime.background_media_kind.settings_value(),
+            window,
+            cx,
+        );
     }
 
     fn choose_background_image(&mut self, cx: &mut Context<Self>) {
-        let language = crate::gpui_shell::config::ui_language(cx);
-        let kind = self.runtime.background_media_kind;
-        if kind == nebula_settings::BackgroundMediaKind::Video
-            && !super::wallpaper::video_available()
-        {
-            self.error_video_unavailable(cx);
+        if self.media_picker.is_some() {
             return;
         }
+        let language = crate::gpui_shell::config::ui_language(cx);
+        let kind = self.runtime.background_media_kind;
+        if !super::wallpaper::media_available(kind) {
+            super::wallpaper::show_media_error(kind, cx);
+            return;
+        }
+        let old_path = self.runtime.background_image.clone();
+        self.media_picker_generation = self.media_picker_generation.wrapping_add(1);
+        let generation = self.media_picker_generation;
         let picked = cx.prompt_for_paths(gpui::PathPromptOptions {
             files: true,
             directories: false,
             multiple: false,
             prompt: Some(
-                if kind == nebula_settings::BackgroundMediaKind::Video {
+                if kind == nebula_settings::BackgroundMediaKind::Gif {
+                    language.text(crate::i18n::Message::WallpaperGifPrompt)
+                } else if kind == nebula_settings::BackgroundMediaKind::Video {
                     language.text(crate::i18n::Message::WallpaperVideoPrompt)
                 } else {
                     language.text(crate::i18n::Message::ThemeEditorChooseImage)
@@ -1072,30 +1081,55 @@ impl SettingsPane {
                 .into(),
             ),
         });
-        cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = picked.await else { return };
-            let Some(path) = paths.into_iter().next() else { return };
-            let value = path.to_string_lossy().into_owned();
+        self.media_picker = Some(cx.spawn(async move |this, cx| {
+            let result = picked.await;
             let _ = this.update(cx, |pane, cx| {
-                if pane.runtime.background_media_kind != kind {
+                if generation != pane.media_picker_generation {
                     return;
                 }
-                pane.persist(
-                    &[
-                        ("background_image", value),
-                        ("background_media_kind", kind.settings_value().to_owned()),
-                    ],
-                    cx,
-                );
+                if let Some(task) = pane.media_picker.take() {
+                    task.detach();
+                }
+                if pane.runtime.background_media_kind != kind
+                    || pane.runtime.background_image != old_path
+                {
+                    cx.notify();
+                    return;
+                }
+                match result {
+                    Ok(Ok(Some(paths))) => {
+                        if let Some(path) = paths.first() {
+                        if let Some(value) = path.to_str() {
+                            pane.persist(
+                                    &[
+                                        ("background_image", value.to_owned()),
+                                        ("background_media_kind", kind.settings_value().to_owned()),
+                                    ],
+                                cx,
+                            );
+                            if kind.is_animated() && old_path.as_deref() == Some(value)
+                                && pane.runtime.background_image.as_deref() == Some(value) {
+                                super::wallpaper::reload_media(cx);
+                            }
+                            } else {
+                                super::wallpaper::show_media_error(kind, cx);
+                            }
+                        }
+                    },
+                    Ok(Ok(None)) => {},
+                    _ => super::wallpaper::show_media_error(kind, cx),
+                }
+                cx.notify();
             });
-        })
-        .detach();
+        }));
+        cx.notify();
     }
 
     fn background_image_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let language = crate::gpui_shell::config::ui_language(cx);
         let video =
             self.runtime.background_media_kind == nebula_settings::BackgroundMediaKind::Video;
+        let gif = self.runtime.background_media_kind == nebula_settings::BackgroundMediaKind::Gif;
         let current = self.runtime.background_image.clone();
         let has_image = current.as_ref().is_some_and(|path| !path.trim().is_empty());
         let path_label: Option<SharedString> =
@@ -1108,18 +1142,24 @@ impl SettingsPane {
                     .into()
             });
         self.row_with_reset(
-            if video {
+            if gif {
+                language.text(crate::i18n::Message::WallpaperGif)
+            } else if video {
                 language.text(crate::i18n::Message::WallpaperVideo)
             } else {
                 language.pick("背景图片", "Background image")
             },
-            if video {
+            if gif {
+                language.text(crate::i18n::Message::WallpaperGifDescription).into()
+            } else if video {
                 language.text(crate::i18n::Message::WallpaperVideoDescription).into()
             } else {
                 help("background_image", language)
             },
             has_image,
             |this, _, cx| {
+                this.media_picker_generation = this.media_picker_generation.wrapping_add(1);
+                this.media_picker.take();
                 this.persist(&[("background_image", String::new())], cx);
             },
             h_flex()
@@ -1127,15 +1167,31 @@ impl SettingsPane {
                 .gap_2()
                 .child(
                     NebulaButton::new("background-image-choose")
-                        .label(if video {
+                        .label(if self.media_picker.is_some() {
+                            language.text(crate::i18n::Message::WallpaperMediaSelecting)
+                        } else if gif {
+                            language.text(crate::i18n::Message::WallpaperChooseGif)
+                        } else if video {
                             language.text(crate::i18n::Message::WallpaperChooseVideo)
                         } else {
                             language.text(crate::i18n::Message::ThemeEditorChooseImage)
                         })
+                        .disabled(
+                            self.media_picker.is_some()
+                                || !super::wallpaper::media_available(
+                                    self.runtime.background_media_kind,
+                                ),
+                        )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.choose_background_image(cx);
                         })),
                 )
+                .when((video || gif) && has_image, |row| row.child(
+                    NebulaButton::new("background-media-reload")
+                        .label(language.text(crate::i18n::Message::WallpaperMediaReload))
+                        .disabled(self.media_picker.is_some() || !super::wallpaper::media_available(self.runtime.background_media_kind))
+                        .on_click(cx.listener(|_, _, _, cx| super::wallpaper::reload_media(cx)))
+                ))
                 .when_some(path_label, |row, name| {
                     row.child(
                         div()
