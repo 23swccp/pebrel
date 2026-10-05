@@ -23,11 +23,15 @@ def run_git(repository: Path, *args: str) -> None:
 class ProhibitedNamesTests(unittest.TestCase):
     def test_truncated_unicode_hunk_context_preserves_added_source_checks(self) -> None:
         context = "managed generation 改变时，旧回调".encode("utf-8")[:-1]
+        sample = "++" + check_prohibited_names.PROHIBITED_EXAMPLES[0]
         for parents, header, prefix in ((None, b"@@ -1 +1 @@ ", b"+"), (2, b"@@@ -1 -1 +1 @@@ ", b"++")):
             with self.subTest(parents=parents):
-                diff = b"+++ b/source.rs\n" + header + context + b"\n" + prefix + b"safe\n" + prefix + b"++Ghostty\n"
+                diff = (
+                    b"+++ b/source.rs\n" + header + context + b"\n"
+                    + prefix + b"safe\n" + prefix + sample.encode("utf-8") + b"\n"
+                )
                 lines = list(check_prohibited_names.added_patch_lines(diff, parents))
-                self.assertEqual(lines, [(3, "safe"), (4, "++Ghostty")])
+                self.assertEqual(lines, [(3, "safe"), (4, sample)])
                 self.assertTrue(check_prohibited_names.prohibited_source_line("source.rs", lines[1][1]))
                 if parents is None:
                     with patch.object(check_prohibited_names, "git", return_value=diff):
