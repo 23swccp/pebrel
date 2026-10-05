@@ -2,6 +2,10 @@
 from pathlib import Path
 import json
 import io
+import hashlib
+import os
+import shutil
+import subprocess
 import tarfile
 import struct
 import tempfile
@@ -9,6 +13,7 @@ import unittest
 import zipfile
 
 from verify_ghostty_apk import verify
+from package_manual_relay import package as package_manual
 
 
 def deployment_kit() -> bytes:
@@ -110,6 +115,95 @@ class ApkAuditTest(unittest.TestCase):
             contents["lib/arm64-v8a/libpebrel_ssh.so"] = payload
             with self.assertRaises(ValueError):
                 self.audit(contents)
+
+
+class ManualRelayKitTest(unittest.TestCase):
+    def test_kit_contains_verified_binaries_and_its_complete_installer(self):
+        commit = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / "fixture.apk"
+            output = Path(directory) / "relay-manual.tar.gz"
+            with zipfile.ZipFile(apk, "w") as archive:
+                for arch, machine in (("x86_64", 62), ("aarch64", 183)):
+                    binary = elf(machine)
+                    prefix = f"assets/native-relay/{arch}"
+                    archive.writestr(f"{prefix}/pebrel-relay", binary)
+                    archive.writestr(f"{prefix}/manifest.json", json.dumps({
+                        "protocol": 2, "arch": arch, "commit": commit, "size": len(binary),
+                        "sha256": hashlib.sha256(binary).hexdigest(),
+                    }))
+            package_manual(apk, output, commit)
+            with tarfile.open(output) as archive:
+                root = "pebrel-relay-manual/"
+                self.assertEqual(archive.extractfile(root + "SOURCE_COMMIT").read(), (commit + "\n").encode())
+                self.assertIn(b"service-install", archive.extractfile(root + "install.sh").read())
+                self.assertIn(b"sha256sum -c", archive.extractfile(root + "INSTALL.md").read())
+                for arch, machine in (("x86_64", 62), ("aarch64", 183)):
+                    binary = archive.extractfile(root + arch + "/pebrel-relay").read()
+                    self.assertEqual(binary, elf(machine))
+                    self.assertEqual(archive.getmember(root + arch + "/pebrel-relay").mode, 0o700)
+            self.assertEqual(output.with_name(output.name + ".sha256").read_text(encoding="utf-8"),
+                             hashlib.sha256(output.read_bytes()).hexdigest() + "  " + output.name + "\n")
+            with self.assertRaises(ValueError):
+                package_manual(apk, output, commit)
+            with self.assertRaises(ValueError):
+                package_manual(apk, Path(directory) / "wrong-source.tar.gz", "b" * 40)
+
+    @unittest.skipUnless(shutil.which("sh"), "requires a POSIX shell for the installer fixture")
+    def test_installer_selects_architecture_and_stops_before_unsafe_or_failed_execution(self):
+        script = Path(__file__).resolve().parents[1] / "relay-native/install.sh"
+        with tempfile.TemporaryDirectory(prefix="pebrel manual kit ") as directory:
+            root = Path(directory)
+            shutil.copyfile(script, root / "install.sh")
+            tools = root / "tools"
+            tools.mkdir()
+            log = root / "calls"
+            stubs = {
+                "uname": '#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo "$TEST_ARCH";; esac\n',
+                "id": '#!/bin/sh\necho 0\n',
+            }
+            for name, text in stubs.items():
+                path = tools / name
+                path.write_text(text, encoding="utf-8", newline="\n")
+                path.chmod(0o755)
+            binary = (b'#!/bin/sh\nprintf "%s\\n" "$@" >> "$TEST_CALLS"\n'
+                      b'if [ "$1" = service-install ] && [ "$TEST_FAIL" = 1 ]; then exit 9; fi\n')
+            digest = hashlib.sha256(binary).hexdigest()
+            for arch in ("x86_64", "aarch64"):
+                folder = root / arch
+                folder.mkdir()
+                (folder / "pebrel-relay").write_bytes(binary)
+                (folder / "SHA256SUMS").write_text(digest + "  pebrel-relay\n", encoding="utf-8", newline="\n")
+
+            def run(arch="x86_64", port="18443", fail="0"):
+                # PATH 只替换系统事实，安装目标始终是本测试的记录脚本。
+                return subprocess.run(
+                    [shutil.which("sh"), "-c", 'tools=$(CDPATH= cd -- "$1" && pwd); PATH="$tools:$PATH"; export PATH; exec sh "$2" "$3" "$4"',
+                     "fixture", tools.as_posix(), (root / "install.sh").as_posix(), "127.0.0.1", port],
+                    env={**os.environ, "TEST_ARCH": arch, "TEST_CALLS": log.as_posix(), "TEST_FAIL": fail},
+                    capture_output=True, text=True, encoding="utf-8", timeout=10,
+                )
+
+            for arch in ("x86_64", "aarch64", "arm64"):
+                result = run(arch)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                calls = log.read_text(encoding="utf-8").splitlines()
+                self.assertEqual(calls[0], "service-install")
+                self.assertTrue(calls[2].endswith("/" + ("aarch64" if arch == "arm64" else arch) + "/pebrel-relay"))
+                self.assertEqual(calls[3:], ["--sha256", digest, "--address", "127.0.0.1", "--port", "18443", "service-status"])
+                log.unlink()
+            for arch, port in (("riscv64", "443"), ("x86_64", "0"), ("x86_64", "65536"), ("x86_64", "1;echo")):
+                self.assertNotEqual(run(arch, port).returncode, 0)
+                self.assertFalse(log.exists())
+            failed = run(fail="1")
+            self.assertEqual(failed.returncode, 9)
+            self.assertNotIn("4/4", failed.stdout)
+            self.assertNotIn("service-status", log.read_text(encoding="utf-8"))
+            log.unlink()
+            with (root / "x86_64/pebrel-relay").open("ab") as stream:
+                stream.write(b"changed")
+            self.assertNotEqual(run().returncode, 0)
+            self.assertFalse(log.exists())
 
 
 if __name__ == "__main__":
