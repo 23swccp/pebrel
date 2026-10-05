@@ -22,17 +22,22 @@ and verifies its SHA256 before executing the bundled binary.
 
 ## Install / 安装
 
-Transfer the archive and its `.sha256` file to the server, then use the actual
-archive filename in place of `Pebrel-vVERSION-relay-manual.tar.gz` below:
+For a Release download, transfer the archive and `SHA256SUMS` to the server,
+then use the actual version in place of `VERSION` below:
 
-将安装包和对应的 `.sha256` 文件上传至服务器，把以下文件名替换为实际名称：
+从 Release 下载时，将安装包和 `SHA256SUMS` 上传至服务器，把以下 `VERSION`
+替换为实际版本号：
 
 ```sh
-sha256sum -c Pebrel-vVERSION-relay-manual.tar.gz.sha256
+grep '  Pebrel-vVERSION-relay-manual.tar.gz$' SHA256SUMS | sha256sum -c -
 tar -xzf Pebrel-vVERSION-relay-manual.tar.gz
 cd pebrel-relay-manual
 sudo sh install.sh SERVER_IP 443
 ```
+
+For a locally generated kit, verify its individual `.sha256` file with
+`sha256sum -c Pebrel-vVERSION-relay-manual.tar.gz.sha256` instead.
+本地生成的安装包使用同名 `.sha256` 文件校验；两种方式都应在解压前完成校验。
 
 Replace `SERVER_IP` with the IP address or hostname your devices use to reach
 this server. The second argument is the relay port and defaults to `443`.
@@ -92,9 +97,33 @@ does not publish a Release or modify an existing public asset.
 
 此命令生成离线压缩包与 SHA256 校验文件，不会发布 Release 或修改公开资产。
 
-The product's GPL license is included as `LICENSE`. Public distribution also
-requires the native dependency notices corresponding to the bundled binaries;
-archive generation alone does not establish release readiness.
+The product's GPL license is included as `LICENSE`. Each architecture's `licenses`
+directory retains its source-bound native dependency inventory and texts. The
+packer checks the recorded source, target and file hashes before including them.
 
-产品 GPL 许可证包含在 `LICENSE` 中。公开分发还需配齐包内二进制对应的原生
-依赖许可声明；生成压缩包本身不代表已完成发布验收。
+产品 GPL 许可证包含在 `LICENSE` 中，各架构的 `licenses` 目录保存对应的原生
+依赖清单与许可文本，打包前校验源码提交、目标与文件摘要。
+
+Older APKs such as v2.1.1 do not contain these relay notice bundles. Prepare the
+matching source checkout and its cached Cargo dependencies, then use the current
+collector without replacing the APK's binaries:
+
+v2.1.1 等旧 APK 没有内置这份中转许可材料。先准备该版本的源码 checkout 和已缓存的
+Cargo 依赖，再用当前收集工具生成材料；收集过程离线，不替换 APK 内的二进制：
+
+```sh
+for arch in x86_64 aarch64; do
+  python3 mobile/tools/relay_notices.py --source SOURCE_CHECKOUT \
+    --commit SOURCE_COMMIT --arch "$arch" --output "relay-notices/$arch"
+done
+python3 mobile/tools/package_manual_relay.py \
+  --apk Pebrel-vVERSION-android-universal-preview.apk --commit SOURCE_COMMIT \
+  --licenses relay-notices --output Pebrel-vVERSION-relay-manual.tar.gz
+```
+
+Release collection requires the kit starting with version 2.1.2, the first
+unpublished patch version after this repair. Historical Release manifests remain
+unchanged; this rule does not publish a version or add assets to an existing Release.
+
+发布收集从修复后的首个未发布补丁版本 2.1.2 起要求离线包；历史 Release 资产清单
+保持不变。这项规则本身不会发布版本或给现有 Release 增加资产。

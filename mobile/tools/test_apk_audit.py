@@ -14,6 +14,9 @@ import zipfile
 
 from verify_ghostty_apk import verify
 from package_manual_relay import package as package_manual
+from verify_native_relay_apk import verify as verify_relay
+from relay_notices import TARGETS, dependency_packages, read_bundle
+from cargo_notices import collect as collect_notices
 
 
 def deployment_kit() -> bytes:
@@ -117,6 +120,15 @@ class ApkAuditTest(unittest.TestCase):
                 self.audit(contents)
 
 
+def notice_files(arch, commit):
+    files = {"fixture-1/LICENSE": b"MIT license fixture", "Cargo.lock": b"source lock fixture",
+             "LICENSE-SOURCE.json": b"{}"}
+    manifest = {"schema_version": 1, "commit": commit, "target": TARGETS[arch],
+                "packages": [{"name": "fixture", "version": "1", "texts": ["LICENSE"]}],
+                "files": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}
+    return {**files, "manifest.json": json.dumps(manifest).encode()}
+
+
 class ManualRelayKitTest(unittest.TestCase):
     def test_kit_contains_verified_binaries_and_its_complete_installer(self):
         commit = "a" * 40
@@ -132,6 +144,9 @@ class ManualRelayKitTest(unittest.TestCase):
                         "protocol": 2, "arch": arch, "commit": commit, "size": len(binary),
                         "sha256": hashlib.sha256(binary).hexdigest(),
                     }))
+                    for name, data in notice_files(arch, commit).items():
+                        archive.writestr(f"{prefix}/licenses/{name}", data)
+            verify_relay(apk, commit, require_licenses=True)
             package_manual(apk, output, commit)
             with tarfile.open(output) as archive:
                 root = "pebrel-relay-manual/"
@@ -143,12 +158,32 @@ class ManualRelayKitTest(unittest.TestCase):
                     binary = archive.extractfile(root + arch + "/pebrel-relay").read()
                     self.assertEqual(binary, elf(machine))
                     self.assertEqual(archive.getmember(root + arch + "/pebrel-relay").mode, 0o700)
+                    self.assertEqual(archive.extractfile(root + arch + "/licenses/fixture-1/LICENSE").read(),
+                                     b"MIT license fixture")
             self.assertEqual(output.with_name(output.name + ".sha256").read_text(encoding="utf-8"),
                              hashlib.sha256(output.read_bytes()).hexdigest() + "  " + output.name + "\n")
             with self.assertRaises(ValueError):
                 package_manual(apk, output, commit)
             with self.assertRaises(ValueError):
                 package_manual(apk, Path(directory) / "wrong-source.tar.gz", "b" * 40)
+            old_apk = Path(directory) / "older.apk"
+            with zipfile.ZipFile(apk) as current, zipfile.ZipFile(old_apk, "w") as older:
+                for name in current.namelist():
+                    if "/licenses/" not in name:
+                        older.writestr(name, current.read(name))
+            verify_relay(old_apk, commit)
+            with self.assertRaises(KeyError):
+                verify_relay(old_apk, commit, require_licenses=True)
+            with self.assertRaises(KeyError):
+                package_manual(old_apk, Path(directory) / "missing-notices.tar.gz", commit)
+            self.assertFalse((Path(directory) / "missing-notices.tar.gz").exists())
+            notices = Path(directory) / "notices"
+            for arch in TARGETS:
+                for name, data in notice_files(arch, commit).items():
+                    path = notices / arch / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+            package_manual(old_apk, Path(directory) / "older-with-notices.tar.gz", commit, notices)
 
     @unittest.skipUnless(shutil.which("sh"), "requires a POSIX shell for the installer fixture")
     def test_installer_selects_architecture_and_stops_before_unsafe_or_failed_execution(self):
@@ -205,6 +240,68 @@ class ManualRelayKitTest(unittest.TestCase):
                 stream.write(b"changed")
             self.assertNotEqual(run().returncode, 0)
             self.assertFalse(log.exists())
+
+
+class RelayNoticeTest(unittest.TestCase):
+    def test_inventory_binds_texts_to_source_target_and_safe_paths(self):
+        commit = "a" * 40
+        files = notice_files("x86_64", commit)
+        self.assertEqual(read_bundle(files.__getitem__, commit, "x86_64"), files)
+        for source, arch in (("b" * 40, "x86_64"), (commit, "aarch64")):
+            with self.assertRaises(ValueError):
+                read_bundle(files.__getitem__, source, arch)
+        changed = dict(files, **{"fixture-1/LICENSE": b"changed"})
+        with self.assertRaises(ValueError):
+            read_bundle(changed.__getitem__, commit, "x86_64")
+        missing = dict(files)
+        del missing["fixture-1/LICENSE"]
+        with self.assertRaises(KeyError):
+            read_bundle(missing.__getitem__, commit, "x86_64")
+        for text in ("../secret", "/absolute", "bad\\path"):
+            changed = dict(files)
+            manifest = json.loads(files["manifest.json"])
+            manifest["packages"][0]["texts"] = [text]
+            changed["manifest.json"] = json.dumps(manifest).encode()
+            with self.assertRaises(ValueError):
+                read_bundle(changed.__getitem__, commit, "x86_64")
+
+    def test_dependency_walk_excludes_dev_only_and_unrelated_packages(self):
+        packages = [{"id": "root", "name": "pebrel-mobile-link", "source": None},
+                    *({"id": name, "name": name, "source": "registry"} for name in ("normal", "build", "dev", "unrelated"))]
+        metadata = {"packages": packages, "resolve": {"nodes": [
+            {"id": "root", "deps": [{"pkg": "normal", "dep_kinds": [{"kind": None}]},
+                                      {"pkg": "build", "dep_kinds": [{"kind": "build"}]},
+                                      {"pkg": "dev", "dep_kinds": [{"kind": "dev"}]}]},
+            *({"id": name, "deps": []} for name in ("normal", "build", "dev", "unrelated"))]}}
+        self.assertEqual([p["name"] for p in dependency_packages(metadata)], ["normal", "build"])
+
+    def test_shared_collector_retains_texts_and_selects_only_allowed_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "Cargo.toml").write_text("[package]\n", encoding="utf-8")
+            (source / "LICENSE").write_text("license fixture", encoding="utf-8")
+            apache = root / "Apache.txt"
+            apache.write_text("pinned Apache fixture", encoding="utf-8")
+            sha = hashlib.sha256(apache.read_bytes()).hexdigest()
+            package = {"name": "fixture", "version": "1", "source": "registry",
+                       "manifest_path": str(source / "Cargo.toml"), "license": "MIT OR Apache-2.0",
+                       "authors": ["fixture author"], "repository": None}
+            records = collect_notices([package], root / "output", apache, sha)
+            self.assertEqual(records[0]["texts"], ["LICENSE"])
+            self.assertIsNone(records[0]["selected_license"])
+            (source / "LICENSE").unlink()
+            records = collect_notices([package], root / "fallback", apache, sha)
+            self.assertEqual(records[0]["selected_license"], "Apache-2.0")
+            self.assertIn("upstream-Cargo.toml", records[0]["texts"])
+            legacy = collect_notices([dict(package, license="MIT/Apache-2.0")], root / "legacy", apache, sha)
+            self.assertEqual(legacy[0]["selected_license"], "Apache-2.0")
+            for license in ("MIT", "MIT AND Apache-2.0", "MIT AND (BSD-3-Clause OR Apache-2.0)"):
+                with self.assertRaises(ValueError):
+                    collect_notices([dict(package, license=license)], root / "invalid", apache, sha)
+            with self.assertRaises(ValueError):
+                collect_notices([package], root / "bad-hash", apache, "0" * 64)
 
 
 if __name__ == "__main__":
