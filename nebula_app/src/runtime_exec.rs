@@ -76,6 +76,16 @@ impl PaneExecContext {
         }
     }
 
+    pub(crate) fn for_wsl_distribution(&self, name: &str) -> Option<Self> {
+        let mut context = self.clone();
+        let ExecLocation::Wsl { distro, .. } = &mut context.location else { return None };
+        if distro.as_deref().is_some_and(|old| old != name) {
+            return None;
+        }
+        *distro = Some(name.to_owned());
+        Some(context)
+    }
+
     pub(crate) fn wsl_user(&self) -> Option<&str> {
         match &self.location {
             ExecLocation::Host => None,
@@ -229,15 +239,14 @@ pub(crate) fn build_command(
         },
         ExecLocation::Wsl { distro, user } => {
             let guest_cwd = crate::shell_detect::wsl_guest_cwd(reported_cwd);
-            // Refuse what `wsl.exe` cannot receive rather than run something else.
-            if let Some(value) = guest_cwd
-                .into_iter()
-                .chain(argv.iter().map(String::as_str))
-                .find(|value| !crate::shell_detect::wsl_accepts_arg(value))
+            // --cd 由启动选项解析器处理；--exec 后的 argv 由原生参数边界保留，
+            // 不把前者的限制扩展到 Python 字符串、提交说明等合法参数。
+            if let Some(value) =
+                guest_cwd.filter(|value| !crate::shell_detect::wsl_accepts_startup_arg(value))
             {
                 return Err(ApiError::new(
                     "exec_argument_unsupported",
-                    "WSL cannot receive a double quote inside an argument or working directory",
+                    "WSL startup working directories containing a double quote are not supported",
                 )
                 .details(json!({ "argument": value })));
             }
@@ -426,9 +435,9 @@ mod tests {
         assert_eq!(PaneExecContext::from_pty_options(&options).wsl_user(), Some("hello"));
     }
 
-    /// A `"` in a guest cwd (an OSC 7 report) or argv would end `wsl.exe`'s quote.
+    /// 启动目录和直接执行参数是不同的解析边界。
     #[test]
-    fn wsl_exec_refuses_what_wsl_cannot_receive() {
+    fn wsl_exec_preserves_argv_and_checks_startup_directory() {
         let mut options = nebula_terminal::tty::Options::default();
         options.shell = Some(nebula_terminal::tty::Shell::new(
             "wsl.exe".into(),
@@ -436,13 +445,18 @@ mod tests {
         ));
         let context = PaneExecContext::from_pty_options(&options);
         let argv = |list: &[&str]| list.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
-        let refused = |cwd: &str, argv: &[String]| {
+        let unsupported = |cwd: &str, argv: &[String]| {
             build_command(&context, cwd, argv)
                 .is_err_and(|error| error.code == "exec_argument_unsupported")
         };
-        assert!(refused("/tmp/i\" touch /tmp/x #", &argv(&["pwd"])));
-        assert!(refused("/srv", &argv(&["git", "commit", "-m", "say \"hi\""])));
-        assert!(!refused("/srv/my project", &argv(&["git", "status"])));
+        assert!(unsupported("/tmp/i\" touch /tmp/x #", &argv(&["pwd"])));
+        assert!(!unsupported("/srv/my project", &argv(&["git", "status"])));
+        let expected = argv(&["git", "commit", "-m", "say \"hi\"", "trailing \\"]);
+        let (command, _) = build_command(&context, "/srv", &expected).unwrap();
+        let args: Vec<_> =
+            command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect();
+        let delimiter = args.iter().position(|arg| arg == "--exec").unwrap();
+        assert_eq!(&args[delimiter + 1..], &expected);
     }
 
     #[test]

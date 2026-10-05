@@ -61,23 +61,27 @@ not the CRT's (`shell_detect::wsl_raw_arg`). Measured on WSL 2 on 2026-09-29:
 quote and the rest of the path runs as a guest command. A path with whitespace
 is wrapped in quotes; a path containing `"` has no encoding and is not
 injected: a split, duplicate or fork keeps the launch's own `--cd` or `~`, and
-only a file-tree terminal starts without `--cd`. `pane.exec` in a WSL pane goes
-through `std::process::Command`, whose CRT quoting has the same flaw, so it
-refuses a guest cwd or argument containing `"` (`wsl_accepts_arg`, the one rule
-both paths use). Persisted WSL launch arguments follow the raw convention too:
+only a file-tree terminal starts without `--cd`. `pane.exec` keeps the same
+restriction for startup `--cd` through `wsl_accepts_startup_arg`. The argv after
+`--exec` uses native `Command` quoting, not that startup option restriction.
+A maintainer's native Rust round-trip on WSL 2.7.13.0 / Windows 22631 preserved
+double quotes, whitespace and a trailing backslash in direct-exec arguments.
+Persisted WSL launch arguments follow the raw convention too:
 a spaced `--cd` value is stored quoted, which is what a restored raw spawn needs.
 
 Host-side guest helpers (the side panel's git and `find`, the merge tab's
 `cat`/`tee`/git) start through `shell_detect::wsl_exec_command`
 (`wsl.exe -d <distro> --exec`), because the snapshot made every WSL pane, not
-only an explicit `-d` one, feed its reported cwd to them. A cwd that fails
-`wsl_accepts_arg` is not handed to the helpers.
+only an explicit `-d` one, feed its reported cwd to them. Helper paths remain
+separate argv after `--exec`, including literal quotes; they are never shell text.
 
 Copies of a pane follow its snapshot through one rule
 (`tab_duplication::copy_launch`). Split, duplicate and AI-session fork insert
 `-d <snapshot>` into a bare launch, after a leading `~`, so a later default
 change cannot move the copy; the pin is persisted only in the copy, and the
-restored original follows the default again. The guest cwd travels through
+restored original follows the default again. Full-layout duplication pins every
+pane's launch and reuses shared reconstruction for directories and layout; it
+does not return to single-pane duplication. The guest cwd travels through
 `--cd` only into the same distribution as the same user; otherwise the copy
 gets the host-visible cwd. A guest path maps to a host directory only from
 `/mnt/<drive>`: Windows would resolve `/` against the current drive, and a UNC
@@ -117,8 +121,9 @@ another name after spawn leaves pinned copies pointing at the old name.
 
 - Registry-free tests in `shell_detect` (resolution, option region, launch
   rewriting, spawn composition), `tab_duplication` (copies), `osc_links`
-  (prompt paths) and `runtime_exec` (`pane.exec` refusing `"` in a guest cwd or
-  argv).
+  (prompt paths) and `runtime_exec` (startup cwd validation versus preserved
+  direct-exec argv). Full-layout coverage is retained; a bare-WSL duplicate
+  regression checks its pane's frozen distribution and user.
 - By hand, not automated: the `"`/backslash encoding against a real `wsl.exe`,
   and interactive file-tree following.
 

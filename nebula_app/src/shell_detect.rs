@@ -643,19 +643,18 @@ pub fn wsl_args_at(program: &str, args: &[String], cwd: &str) -> Option<Vec<Stri
 }
 
 /// A value as one raw argument of the command line `wsl.exe` splits itself: a
-/// value with whitespace is quoted whole (see [`wsl_accepts_arg`]).
+/// value with whitespace is quoted whole (see [`wsl_accepts_startup_arg`]).
 fn wsl_raw_arg(value: &str) -> Option<String> {
-    if !wsl_accepts_arg(value) {
+    if !wsl_accepts_startup_arg(value) {
         return None;
     }
     Some(if value.contains([' ', '\t']) { format!("\"{value}\"") } else { value.to_owned() })
 }
 
-/// `wsl.exe` only pairs `"`, keeps backslashes literal and cannot express a `"`
-/// inside an argument (a CRT `\"` ends the quote and the rest runs as a guest
-/// command; see `architecture/notes/nebula_app/shell_detect/`). Every guest value
-/// handed to `wsl.exe` checks this one rule.
-pub(crate) fn wsl_accepts_arg(value: &str) -> bool {
+/// Raw WSL startup options use a different parser from the argv after `--exec`.
+/// Keep the verified quote boundary for injected `--cd` values only; direct-exec
+/// arguments retain `Command`'s native quoting.
+pub(crate) fn wsl_accepts_startup_arg(value: &str) -> bool {
     !value.contains('"')
 }
 
@@ -752,8 +751,8 @@ pub struct WslCwd {
 }
 
 /// `wsl.exe -d <distro> --exec` for host-side guest helpers (git, find, cat):
-/// `--` would let the guest's login shell expand a reported cwd. Appended
-/// arguments must pass [`wsl_accepts_arg`].
+/// `--` would let the guest's login shell expand a reported cwd. Append arguments
+/// through `Command::arg`/`args`; never join them into shell text.
 pub(crate) fn wsl_exec_command(distro: &str) -> std::process::Command {
     let mut command = std::process::Command::new("wsl.exe");
     command.args(["-d", distro, "--exec"]);
@@ -823,7 +822,7 @@ pub fn wsl_cwd_report_env(
     // Runtime submit barrier 会拒绝把它错配给尚未真正提交的新命令。
     const REPORT: &str = r#"__nebula_status=$?; if [ -z "${__pebrel_shell_token:-}" ]; then __pebrel_shell_token=$(printf '%s' "wsl|${WSL_DISTRO_NAME:-}|bash:${HOSTNAME:-wsl}:${BASHPID:-$$}:$RANDOM" | base64 | tr -d '\r\n');
 __PEBREL_CONNECTION_HOOK__
-fi; printf '\033]1337;SetUserVar=pebrel_shell=%s\007\033]133;D;%s\007\033]7;file://%s%s\007\033]133;A\007' "$__pebrel_shell_token" "$__nebula_status" "${HOSTNAME:-wsl}" "$PWD""#;
+fi; printf '\033]1337;SetUserVar=pebrel_shell=%s\007' "$__pebrel_shell_token"; if typeset -f __pebrel_editor_ready_report >/dev/null; then __pebrel_editor_ready_report; fi; printf '\033]133;D;%s\007\033]7;file://%s%s\007\033]133;A\007' "$__nebula_status" "${HOSTNAME:-wsl}" "$PWD""#;
     // 宿主侧可能已经有 WSLENV（别的工具设的），必须追加而不是覆盖。
     let mut wslenv = current_wslenv
         .map(str::to_owned)

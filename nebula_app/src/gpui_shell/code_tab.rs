@@ -596,17 +596,6 @@ fn contains_conflict_markers(text: &str) -> bool {
     false
 }
 
-/// A WSL key also reaches `wsl.exe --exec` as an argument, which cannot carry `"`.
-fn validate_key(key: &MergeKey) -> Result<(), String> {
-    validate_relative_path(&key.relative_path)?;
-    if matches!(key.location, GitLocation::Wsl { .. })
-        && !crate::shell_detect::wsl_accepts_arg(&key.relative_path)
-    {
-        return Err("冲突文件路径无效".to_owned());
-    }
-    Ok(())
-}
-
 fn validate_relative_path(path: &str) -> Result<(), String> {
     if path.is_empty() || path.chars().any(char::is_control) {
         return Err("冲突文件路径无效".to_owned());
@@ -622,7 +611,7 @@ fn validate_relative_path(path: &str) -> Result<(), String> {
 }
 
 fn load_conflict(key: &MergeKey) -> Result<ConflictDocument, String> {
-    validate_key(key)?;
+    validate_relative_path(&key.relative_path)?;
     let ours = read_stage(key, 2)?;
     let theirs = read_stage(key, 3)?;
     if ours.is_none() && theirs.is_none() {
@@ -676,7 +665,7 @@ fn read_worktree_file(key: &MergeKey) -> Result<Vec<u8>, String> {
 }
 
 fn write_conflict_result(key: &MergeKey, result: String) -> Result<(), String> {
-    validate_key(key)?;
+    validate_relative_path(&key.relative_path)?;
     if result.len() > MAX_CODE_BYTES {
         return Err(format!("合并结果超过 {} MB，已取消写回", MAX_CODE_BYTES / 1024 / 1024));
     }

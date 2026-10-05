@@ -63,6 +63,8 @@
   </tr>
 </table>
 
+商业合作或赞助，请联系：[fickleheartedkeys@163.com](mailto:fickleheartedkeys@163.com)
+
 ## 一个工作区
 
 Pebrel（原名 Nebula）把本地 Shell、远程主机、文件和 AI 命令行工具放进同一个原生桌面工作区。
@@ -163,8 +165,10 @@ Linux 可安装 DEB，或为 AppImage 添加执行权限。macOS 打开对应 DM
 采用临时签名的 macOS 包首次启动可能需要在“系统设置 > 隐私与安全性”中选择“仍要打开”。
 原生 macOS CI 运行在 macOS 15 上，部署目标并不代表每个较早系统版本都已通过运行验证。
 
-系统托盘驻留、全局快速终端热键、自动配置本地 AI hook 和自动安装更新目前由 Windows 提供，
-Linux 与 macOS 尚未提供这些集成。平台要求和旧版 Nebula 升级步骤见[安装说明](INSTALL.md)。
+Pebrel 2.1 在 Windows、macOS 和 Linux 上接通原生托盘操作、快速终端快捷键、登录自启和
+本地 AI Hook 配置。Linux 托盘使用状态通知器，Wayland 快捷键使用桌面 Portal。
+Windows 与 macOS 提供原生更新安装；Linux 通过包管理器或新安装包升级。
+平台要求和旧版 Nebula 升级步骤见[安装说明](INSTALL.md)。
 
 ## 配置
 
@@ -198,8 +202,6 @@ cargo build --release --locked -p nebula --bin pebrel --features gpui-shell
 旧渲染器仅在显式启用 `legacy-shell` 时使用。
 
 ## 联系方式
-
-商业合作或赞助，请联系：[fickleheartedkeys@163.com](mailto:fickleheartedkeys@163.com)
 
 Discord：[discord.gg/VFn4rcxmhn](https://discord.gg/VFn4rcxmhn)
 

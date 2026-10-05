@@ -317,11 +317,6 @@ impl SidePanel {
 
     fn spawn_git(&mut self, args: Vec<String>) {
         if let Some(located) = self.followed_wsl.clone() {
-            // `wsl.exe --exec` cannot carry a `"` in a path from `git status`.
-            if !args.iter().all(|arg| crate::shell_detect::wsl_accepts_arg(arg)) {
-                self.set_op_error(PanelNotice::PathUnavailable);
-                return;
-            }
             let mut guest_args: Vec<OsString> = [
                 "-d",
                 located.distro.as_str(),
