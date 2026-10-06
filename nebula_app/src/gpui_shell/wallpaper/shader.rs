@@ -1,4 +1,5 @@
 //! 后台编译、固定尺寸 GPU 目标和按窗口归属的播放时钟。
+#[path = "shader/compile.rs"]
 mod compile;
 pub(super) use crate::gpui_shell::wallpaper::budgets::compiler_budget;
 
