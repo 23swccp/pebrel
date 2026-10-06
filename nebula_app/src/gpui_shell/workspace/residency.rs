@@ -157,6 +157,7 @@ impl NebulaWorkspace {
             | RuntimeCommand::ZoomPane { .. }
             | RuntimeCommand::ResizePane { .. }
             | RuntimeCommand::ReadPane { .. }
+            | RuntimeCommand::ScrollPane { .. }
             | RuntimeCommand::Procs { .. }
             | RuntimeCommand::AgentRead { .. }
             | RuntimeCommand::AgentFork { .. } => {
@@ -554,6 +555,28 @@ impl NebulaWorkspace {
                 serde_json::to_value(read)
                     .map_err(|error| ApiError::new("serialization_failed", error.to_string()))
             },
+            RuntimeCommand::ScrollPane { window_id, pane_id, lines, column, row } => {
+                self.runtime_window_requested(*window_id)?;
+                let tab_ix = self.tab_of_pane(*pane_id).ok_or_else(|| {
+                    ApiError::new("target_not_found", "scroll pane does not exist")
+                })?;
+                let view = match &self.tabs[tab_ix] {
+                    WorkspaceTab::Terminal { panes, .. } => panes
+                        .iter()
+                        .find(|pane| pane.id == *pane_id)
+                        .expect("resolved pane")
+                        .view
+                        .clone(),
+                    _ => unreachable!("tab_of_pane only resolves terminal tabs"),
+                };
+                view.update(cx, |view, cx| view.runtime_scroll(*lines, *column, *row, window, cx))?;
+                self.runtime_result(
+                    json!({"window_id": self.runtime_window_id,
+                    "pane_id": pane_id, "lines": lines}),
+                    window,
+                    cx,
+                )
+            },
             RuntimeCommand::Procs { window_id, pane_id } => {
                 self.runtime_window_requested(*window_id)?;
                 let Some(tab_ix) = self.tab_of_pane(*pane_id) else {
@@ -784,7 +807,7 @@ impl NebulaWorkspace {
                         .expect("tab_of_pane resolved a terminal pane")
                         .view
                         .read(cx)
-                        .runtime_read(self.runtime_window_id, *lines, false),
+                        .runtime_read(self.runtime_window_id, *lines, None),
                     _ => unreachable!("tab_of_pane only resolves terminal tabs"),
                 }?;
                 Ok(json!({ "agent": managed, "read": read }))
