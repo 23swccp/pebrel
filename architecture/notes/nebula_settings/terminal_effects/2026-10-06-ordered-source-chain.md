@@ -2,8 +2,9 @@
 
 ## Status
 
-Implemented. Settings/compiler contracts and native multi-file pixel comparisons
-pass. Real settings-control interaction remains a separate acceptance scope.
+Implemented. Settings/compiler contracts, native multi-file pixel comparisons
+and list/activation controls have evidence. File-picker and live-edit reload
+interaction remain separate acceptance scopes.
 
 ## Context
 
@@ -66,6 +67,14 @@ transforms within 0.5 of an 8-bit channel value. Inspected sidebar, titlebar and
 terminal padding are unchanged. Both source files deliberately use the same
 entry name. Commands complete normally in every run; these are not foreground
 performance measurements or real settings-control interaction tests.
+
+Subsequent native settings runs exercise search, reorder, removal, explicit
+confirmation, disable and removal of the final source. Persisted source slots and
+activation are checked after real clicks. Returning to the terminal shows the
+expected transformed pixels after confirmation and original pixels after disable
+or removing all sources. File selection and reload of changed source contents
+are not covered by these runs. Native layout inspection also caught source names
+being squeezed into the select-control column; the list now uses content width.
 
 ## Supersedes
 
