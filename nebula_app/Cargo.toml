@@ -278,7 +278,8 @@ embed-resource = "3.0.2"
 [features]
 # 正式产品只有 GPUI 壳。旧 winit/glutin/crossfont 壳只在显式请求
 # `legacy-shell` 时进入依赖图，不能再被 workspace 默认构建误打进发布包。
-default = ["gpui-shell"]
+# 默认产品带媒体与着色器能力；实际播放/执行仍由用户的独立设置显式开启。
+default = ["gpui-shell", "shader-background"]
 legacy-shell = [
     "dep:crossfont",
     "dep:glutin",
