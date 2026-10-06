@@ -1134,6 +1134,7 @@ mod tests {
         use gpui_component::Root;
         cx.update(|cx| {
             gpui_component::init(cx);
+            crate::gpui_shell::scientific_render::init(cx);
             crate::gpui_shell::workspace::init(cx);
             windowing::initialize(cx, crate::runtime_api::RuntimeHub::new());
         });
