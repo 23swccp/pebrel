@@ -1,10 +1,8 @@
 //! 显式启用后才在后台读取和编译；绘制阶段只接收已验证的字节码。
+use crate::platform::native_visual::compile_hlsl as native_compile;
 use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use nebula_settings::{BackgroundEffectRequest, BackgroundEffects};
 use std::{io::Read, sync::Arc};
-#[path = "native_compile.rs"]
-mod native;
-use native::compile as native_compile;
 
 const SOURCE_LIMIT: usize = 64 * 1024;
 const GRAIN: &str = r#"
@@ -137,7 +135,7 @@ fn translate(source: &str) -> Result<(String, String, bool)> {
     Ok((hlsl, name, animated))
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 

@@ -857,7 +857,7 @@ impl Element for TerminalElement {
             }
         }
 
-        #[cfg(all(windows, feature = "shader-background"))]
+        #[cfg(feature = "shader-background")]
         if snap.cursor.is_none() {
             super::effects::paint(
                 &self.view, bounds, &theme, &overrides, None, focused, window, cx,
@@ -918,7 +918,7 @@ impl Element for TerminalElement {
 
             // IME 组合文本锚点与预编辑串：跟随光标单元格。
             // 后处理位于真实终端与光标之后，补齐菜单和预编辑串之前。
-            #[cfg(all(windows, feature = "shader-background"))]
+            #[cfg(feature = "shader-background")]
             super::effects::paint(
                 &self.view,
                 bounds,

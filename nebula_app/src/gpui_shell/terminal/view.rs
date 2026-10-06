@@ -274,7 +274,7 @@ pub struct TerminalView {
     pub focus_handle: FocusHandle,
     /// 公式覆盖层（探测/持久化状态复用旧壳 `terminal_math`，每 pane 一份）。
     pub math: super::math_overlay::MathOverlay,
-    #[cfg(all(windows, feature = "shader-background"))]
+    #[cfg(feature = "shader-background")]
     pub(super) effect: Option<gpui::Entity<super::effects::TerminalEffect>>,
     pub font: Font,
     pub font_bold: Font,
@@ -516,11 +516,11 @@ impl TerminalView {
         typography::startup_cell_metrics_at_scale(scale, cx)
     }
 
-    #[cfg(all(windows, feature = "shader-background"))]
+    #[cfg(feature = "shader-background")]
     pub(super) fn effect_output_visible(&self) -> bool {
         self.output_visible && self.answer_reader.is_none()
     }
-    #[cfg(all(windows, feature = "shader-background"))]
+    #[cfg(feature = "shader-background")]
     pub(super) fn effect_pane_focused(&self) -> bool {
         self.cursor_pane_focused
     }
@@ -532,7 +532,7 @@ impl TerminalView {
     ) {
         if self.output_visible != visible {
             self.cursor_animation.reset();
-            #[cfg(all(windows, feature = "shader-background"))]
+            #[cfg(feature = "shader-background")]
             if let Some(effect) = self.effect.clone() {
                 // 可见性由工作区裁定；延后读取 view，避免在其更新期间重入借用。
                 cx.defer(move |cx| {

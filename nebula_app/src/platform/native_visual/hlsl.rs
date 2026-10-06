@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use std::{ffi::CString, sync::Arc};
 
-pub(super) fn compile(hlsl: &str, entry: &str) -> Result<Arc<[u8]>> {
+pub(crate) fn compile(hlsl: &str, entry: &str) -> Result<Arc<[u8]>> {
     use windows::{
         Win32::Graphics::Direct3D::{Fxc::*, ID3DInclude},
         core::{PCSTR, s},

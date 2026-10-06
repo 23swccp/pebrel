@@ -4,7 +4,6 @@ use gpui::{
     App, AppContext, Context, StreamImageBudget, StreamImageBudgets, StreamImageCompletion,
     StreamImageHandle, Subscription, Task, Window, WindowId,
 };
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -52,16 +51,8 @@ pub(super) struct Playback {
 }
 
 pub(super) fn allowed(native: isize) -> bool {
-    use windows::Win32::{
-        Foundation::HWND,
-        UI::WindowsAndMessaging::{GetForegroundWindow, IsIconic, IsWindowVisible},
-    };
-    let hwnd = HWND(native as *mut _);
-    unsafe {
-        IsWindowVisible(hwnd).as_bool()
-            && !IsIconic(hwnd).as_bool()
-            && GetForegroundWindow() == hwnd
-    }
+    crate::platform::native_visual::is_visible(native)
+        && crate::platform::native_visual::is_foreground(native)
 }
 
 struct GlobalBudgets {
@@ -157,12 +148,7 @@ impl Playback {
         }
         let id = Window::window_handle(window).window_id();
         if !self.placements.contains_key(&id) {
-            let RawWindowHandle::Win32(handle) =
-                HasWindowHandle::window_handle(window).ok()?.as_raw()
-            else {
-                return None;
-            };
-            let native = handle.hwnd.get();
+            let native = crate::platform::native_visual::window_token(window)?;
             let owner = window.create_stream_image(self.gpu.clone(), cx);
             let activation = cx.observe_window_activation(window, |this, _, cx| this.reconcile(cx));
             let bounds = cx.observe_window_bounds(window, |this, _, cx| this.reconcile(cx));
