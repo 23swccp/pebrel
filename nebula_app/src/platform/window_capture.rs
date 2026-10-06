@@ -24,13 +24,16 @@ pub(crate) fn capture(_window: &Window) -> io::Result<ClientFrame> {
 #[cfg(windows)]
 pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
     use std::ptr;
-    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
-        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
-        DIB_RGB_COLORS, DeleteDC, DeleteObject, GdiFlush, GetDC, HBITMAP, HDC, HGDIOBJ, RGBQUAD,
-        ReleaseDC, SRCCOPY, SelectObject,
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, ClientToScreen, CreateCompatibleDC,
+        CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, GdiFlush, GetDC, HBITMAP, HDC,
+        HGDIOBJ, RGBQUAD, ReleaseDC, SRCCOPY, SelectObject,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetClientRect, IsIconic};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetClientRect, GetForegroundWindow, GetSystemMetrics, IsIconic, SM_CXVIRTUALSCREEN,
+        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+    };
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
     struct Capture {
@@ -70,7 +73,9 @@ pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
     let hwnd = handle.hwnd.get() as HWND;
     let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
     // SAFETY: hwnd is borrowed from the live GPUI window; rect is writable.
-    if unsafe { IsIconic(hwnd) != 0 || GetClientRect(hwnd, &mut rect) == 0 } {
+    if unsafe {
+        GetForegroundWindow() != hwnd || IsIconic(hwnd) != 0 || GetClientRect(hwnd, &mut rect) == 0
+    } {
         return Err(io::Error::other("The client window is not drawable"));
     }
     let width = u32::try_from(rect.right - rect.left)
@@ -81,8 +86,26 @@ pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
     if width == 0 || height == 0 || width > 4096 || height > 4096 || bytes > 32 * 1024 * 1024 {
         return Err(io::Error::other("Client snapshot exceeds the 32 MiB transition budget"));
     }
+    let mut origin = POINT { x: 0, y: 0 };
+    // SAFETY: hwnd is live; metrics and coordinates are device pixels on the
+    // application's DPI-aware UI thread. Capture only its visible client area.
+    unsafe {
+        if ClientToScreen(hwnd, &mut origin) == 0
+            || !client_is_on_screen(
+                (origin.x, origin.y, width, height),
+                (
+                    GetSystemMetrics(SM_XVIRTUALSCREEN),
+                    GetSystemMetrics(SM_YVIRTUALSCREEN),
+                    GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                    GetSystemMetrics(SM_CYVIRTUALSCREEN),
+                ),
+            )
+        {
+            return Err(io::Error::other("The client area is not fully on screen"));
+        }
+    }
     let mut capture = Capture {
-        window: hwnd,
+        window: ptr::null_mut(),
         source: ptr::null_mut(),
         memory: ptr::null_mut(),
         bitmap: ptr::null_mut(),
@@ -108,7 +131,9 @@ pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
     // SAFETY: handles and the top-down 32-bit DIB are owned by Capture; the
     // checked size describes the accessible pixel buffer until bitmap deletion.
     unsafe {
-        capture.source = GetDC(hwnd);
+        // DirectComposition windows have no GDI redirection bitmap. Read the
+        // presented screen pixels rather than an empty window device context.
+        capture.source = GetDC(ptr::null_mut());
         if capture.source.is_null() {
             return Err(io::Error::other("Could not obtain the client device context"));
         }
@@ -132,8 +157,17 @@ pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
             capture.previous = ptr::null_mut();
             return Err(io::Error::other("Could not select the snapshot bitmap"));
         }
-        if BitBlt(capture.memory, 0, 0, width as i32, height as i32, capture.source, 0, 0, SRCCOPY)
-            == 0
+        if BitBlt(
+            capture.memory,
+            0,
+            0,
+            width as i32,
+            height as i32,
+            capture.source,
+            origin.x,
+            origin.y,
+            SRCCOPY,
+        ) == 0
         {
             return Err(io::Error::other("Could not capture the client pixels"));
         }
@@ -148,5 +182,35 @@ pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
             pixel[3] = 255;
         }
         Ok(ClientFrame { width, height, bgra })
+    }
+}
+
+#[cfg(windows)]
+fn client_is_on_screen(client: (i32, i32, u32, u32), screen: (i32, i32, i32, i32)) -> bool {
+    let (x, y, width, height) = client;
+    let (left, top, screen_width, screen_height) = screen;
+    screen_width > 0
+        && screen_height > 0
+        && x >= left
+        && y >= top
+        && i64::from(x) + i64::from(width) <= i64::from(left) + i64::from(screen_width)
+        && i64::from(y) + i64::from(height) <= i64::from(top) + i64::from(screen_height)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::client_is_on_screen;
+
+    #[test]
+    fn client_capture_stays_inside_the_virtual_screen_including_negative_origins() {
+        let screen = (-1920, -1080, 3840, 2160);
+        assert!(client_is_on_screen((-1920, -1080, 1920, 1080), screen));
+        assert!(client_is_on_screen((0, 0, 1920, 1080), screen));
+        for client in [(-1921, 0, 20, 20), (0, -1081, 20, 20), (1910, 0, 20, 20), (0, 1070, 20, 20)]
+        {
+            assert!(!client_is_on_screen(client, screen));
+        }
+        assert!(!client_is_on_screen((i32::MAX, 0, 4096, 100), (0, 0, i32::MAX, 1080)));
+        assert!(!client_is_on_screen((0, 0, 20, 20), (0, 0, 0, 1080)));
     }
 }

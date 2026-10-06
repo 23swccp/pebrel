@@ -15,9 +15,11 @@ their state and increase the cost of every transition frame.
 
 The pinned GPUI exposes rectangular content masks and image cropping through
 `Window::paint_image(bounds, image_bounds, ...)`. Its scene-to-image capture API is
-restricted to test support. The Windows client DC offers a bounded capture
-candidate without enabling test features in the product; its capture quality is
-pending native validation.
+restricted to test support. The Windows renderer uses DirectComposition and
+`WS_EX_NOREDIRECTIONBITMAP`; a regular client DC cannot supply that presented
+image. Capture the displayed client rectangle from the screen DC only while the
+window is foreground and fully inside the virtual desktop. Native transition
+quality remains subject to visual validation.
 
 See [transition ownership](../../../../../nebula_app/src/gpui_shell/theme/transition.rs),
 [native capture](../../../../../nebula_app/src/platform/window_capture.rs) and
@@ -55,8 +57,8 @@ performance guarantee. Temporary CPU and GPU storage includes the client bitmap,
 owned snapshot and atlas texture. Boundary crop count grows with viewport height.
 Frame time and capture quality require native validation at normal and high DPI.
 
-The initial native adapter supports Windows. Other platforms, reduced motion and
-capture failure preserve immediate theme switching without the reveal. A black
+The initial native adapter supports Windows. Other platforms, reduced motion,
+non-foreground/off-screen windows and capture failure preserve immediate theme switching without the reveal. A black
 client capture is rejected rather than displayed as a successful snapshot.
 
 ## Validation
@@ -66,6 +68,8 @@ coverage and 100–200% DPI. Four standalone Rust 1.97.1 geometry/timing tests p
 by including the production modules. This does not compile the GPUI application
 or validate the Windows capture adapter. Actual compilation, theme switches, rapid reversals,
 resize, input routing and GPU resource release must be checked on Windows.
+Windows regression coverage also checks capture boundaries, negative monitor
+origins, invalid desktop metrics and coordinate overflow.
 
 ## Supersedes
 
