@@ -16,29 +16,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[cfg(feature = "video-background")]
-use gpui::AppContext as _;
+use crate::platform::window_material::{apply_windows_accent_policy, background_appearance};
+
 use gpui::{
     App, Bounds, ContentMask, Corners, Hsla, IntoElement, ParentElement, Pixels, RenderImage,
     Styled, Window, WindowBackgroundAppearance, div, fill, point, px, size,
 };
 use image::{Frame, RgbaImage};
 
-#[cfg(feature = "gif-background")]
-mod gif_decoder;
+mod animated;
+mod budgets;
 mod image_loader;
-#[cfg(feature = "video-background")]
-mod playback;
 pub(crate) mod preview;
-#[cfg(feature = "shader-background")]
-mod shader;
 #[cfg(all(test, feature = "gpui-test-support"))]
 mod tests;
-#[cfg(feature = "video-background")]
-mod video;
-use crate::platform::window_backdrop::{
-    apply as apply_windows_accent_policy, background_appearance,
-};
 use nebula_settings::BlurModeName;
 
 use crate::renderer::image::{BackgroundImageAlignment, BackgroundImageFit, wallpaper_rect};
@@ -53,15 +44,9 @@ pub struct VisualEffects {
     loading: bool,
     kind: nebula_settings::BackgroundMediaKind,
     layout: WallpaperLayout,
-    effect_config: nebula_settings::BackgroundEffects,
     terminal_config: nebula_settings::TerminalEffects,
     terminal_reload: u64,
-    #[cfg(feature = "shader-background")]
-    shader: Option<gpui::Entity<shader::Shader>>,
-    #[cfg(feature = "video-background")]
-    video: Option<gpui::Entity<playback::Playback>>,
-    #[cfg(feature = "video-background")]
-    retired_video: Option<gpui::Entity<playback::Playback>>,
+    animated: animated::Animated,
 }
 
 impl gpui::Global for VisualEffects {}
@@ -126,15 +111,10 @@ fn update_wallpaper(
             loading: false,
             kind: nebula_settings::BackgroundMediaKind::Image,
             layout: WallpaperLayout::default(),
-            effect_config: nebula_settings::BackgroundEffects::default(),
+
             terminal_config: nebula_settings::TerminalEffects::default(),
             terminal_reload: 0,
-            #[cfg(feature = "shader-background")]
-            shader: None,
-            #[cfg(feature = "video-background")]
-            video: None,
-            #[cfg(feature = "video-background")]
-            retired_video: None,
+            animated: animated::Animated::default(),
         });
     }
     let desired = rt.background_image.as_ref().map(PathBuf::from);
@@ -143,9 +123,7 @@ fn update_wallpaper(
         effects.kind != rt.background_media_kind
             || effects.wallpaper.as_ref().map(|wp| &wp.path) != desired.as_ref()
     };
-    #[cfg(feature = "video-background")]
-    let source_changed = source_changed
-        || cx.global::<VisualEffects>().video.as_ref().is_some_and(|actor| actor.read(cx).failed());
+    let source_changed = source_changed || animated::source_failed(cx);
     let effects = cx.global_mut::<VisualEffects>();
     effects.opacity = opacity;
     effects.blur = blur;
@@ -175,64 +153,9 @@ fn update_wallpaper(
     effects.generation.fetch_add(1, Ordering::Release);
     retire_image(retired, cx);
     cx.global_mut::<VisualEffects>().terminal_config = rt.terminal_effects.clone();
-    refresh_shader(rt, cx);
-    if rt.background_media_kind.is_animated() {
-        #[cfg(feature = "video-background")]
-        if source_changed {
-            restart_media(rt.background_media_kind, cx);
-        }
-        #[cfg(feature = "video-background")]
-        if let Some(actor) = cx.global::<VisualEffects>().video.clone() {
-            let enabled = rt.background_image_opacity > 0.0 && !shader_ready(cx);
-            actor.update(cx, |state, cx| state.set_enabled(enabled, cx));
-        }
-        #[cfg(not(feature = "video-background"))]
-        if source_changed {
-            show_media_error(rt.background_media_kind, cx);
-        }
-    } else {
-        #[cfg(feature = "video-background")]
-        {
-            let effects = cx.global_mut::<VisualEffects>();
-            effects.video.take();
-            effects.retired_video.take();
-        }
+    animated::configure(rt, source_changed, cx);
+    if !rt.background_media_kind.is_animated() {
         start_load(cx);
-    }
-}
-
-#[cfg(feature = "video-background")]
-fn restart_media(kind: nebula_settings::BackgroundMediaKind, cx: &mut App) {
-    if !media_available(kind) {
-        cx.global_mut::<VisualEffects>().video.take();
-        cx.global_mut::<VisualEffects>().retired_video.take();
-        show_media_error(kind, cx);
-        return;
-    }
-    let old = cx.global_mut::<VisualEffects>().video.take();
-    if let Some(old) = old {
-        let ready = old.read(cx).has_front();
-        old.update(cx, |state, _| state.freeze());
-        if ready {
-            cx.global_mut::<VisualEffects>().retired_video = Some(old);
-        }
-    }
-    let path = cx.global::<VisualEffects>().wallpaper.as_ref().map(|wp| wp.path.clone());
-    if path.is_none() {
-        cx.global_mut::<VisualEffects>().retired_video.take();
-    }
-    let next = path.map(|path| cx.new(|cx| playback::Playback::new(path, kind, cx)));
-    cx.global_mut::<VisualEffects>().video = next;
-}
-
-pub(super) fn reload_media(cx: &mut App) {
-    #[cfg(feature = "video-background")]
-    if let Some(kind) = cx.try_global::<VisualEffects>().map(|effects| effects.kind)
-        && kind.is_animated()
-        && media_available(kind)
-    {
-        restart_media(kind, cx);
-        cx.refresh_windows();
     }
 }
 
@@ -610,82 +533,11 @@ fn paint_wallpaper(bounds: Bounds<Pixels>, under_chrome: bool, window: &mut Wind
     if layout.opacity <= 0.0 || under_chrome != layout.cover_chrome {
         return;
     }
-    #[cfg(feature = "shader-background")]
-    if paint_shader(bounds, under_chrome, layout, window, cx) {
+    if animated::paint(bounds, under_chrome, layout, window, cx) {
         return;
     }
     let effects = cx.global::<VisualEffects>();
     let Some(wp) = effects.wallpaper.as_ref() else { return };
-    #[cfg(feature = "video-background")]
-    if effects.kind.is_animated() {
-        let current = effects.video.clone();
-        let fallback = effects.retired_video.clone();
-        let fit = layout.fit;
-        let alignment = layout.alignment;
-        let extended = layout.cover_chrome;
-        let anchor = if extended {
-            Bounds::new(point(px(0.0), px(0.0)), window.viewport_size())
-        } else {
-            bounds
-        };
-        let radius = if under_chrome { px(0.0) } else { crate::gpui_shell::theme::card_radius(cx) };
-        let ready = current
-            .and_then(|actor| {
-                actor.update(cx, |state, cx| state.touch(window, cx)).map(|data| (actor, data))
-            })
-            .or_else(|| {
-                fallback.and_then(|actor| {
-                    actor.update(cx, |state, cx| state.touch(window, cx)).map(|data| (actor, data))
-                })
-            });
-        if let Some((actor, (front, owner))) = ready {
-            let scale = window.scale_factor().max(0.5);
-            let (x, y, w, h) = wallpaper_rect(
-                f32::from(anchor.size.width) * scale,
-                f32::from(anchor.size.height) * scale,
-                front.frame.width as f32,
-                front.frame.height as f32,
-                fit,
-                alignment,
-            );
-            let image_bounds = Bounds::new(
-                anchor.origin + point(px(x / scale), px(y / scale)),
-                size(px(w / scale), px(h / scale)),
-            );
-            let frame = gpui::StreamImageFrame {
-                sequence: front.frame.sequence,
-                size: size(
-                    gpui::DevicePixels(front.frame.width as i32),
-                    gpui::DevicePixels(front.frame.height as i32),
-                ),
-                row_stride: front.frame.width as usize * 4,
-                pixels: &front.frame.pixels,
-            };
-            match window.paint_stream_image(
-                bounds,
-                image_bounds,
-                image_corners(bounds, image_bounds, radius),
-                &owner,
-                &frame,
-                false,
-            ) {
-                Ok(update) => {
-                    if update.tile.is_some() {
-                        actor.update(cx, |state, cx| state.mark_presentable(cx));
-                    }
-                    if let Some(completion) = update.completion {
-                        let id = window.window_handle().window_id();
-                        actor.update(cx, |state, cx| state.wait_for_gpu(id, completion, cx));
-                    }
-                },
-                Err(error) => {
-                    log::warn!("video background paint failed: {error:#}");
-                    actor.update(cx, |state, cx| state.fail(cx));
-                },
-            }
-        }
-        return;
-    }
     let Some(image) = wp.image.as_ref() else { return };
     let anchor = if layout.cover_chrome {
         Bounds::new(point(px(0.0), px(0.0)), window.viewport_size())
@@ -726,15 +578,10 @@ pub(crate) fn test_install_visual_effects(cx: &mut App, opacity: f32, blur: Blur
         loading: false,
         kind: nebula_settings::BackgroundMediaKind::Image,
         layout: WallpaperLayout::default(),
-        effect_config: nebula_settings::BackgroundEffects::default(),
+
         terminal_config: nebula_settings::TerminalEffects::default(),
         terminal_reload: 0,
-        #[cfg(feature = "shader-background")]
-        shader: None,
-        #[cfg(feature = "video-background")]
-        video: None,
-        #[cfg(feature = "video-background")]
-        retired_video: None,
+        animated: animated::Animated::default(),
     });
 }
 
@@ -744,141 +591,15 @@ pub(crate) fn test_apply_window_effects(cx: &mut App) {
 }
 
 pub(super) fn video_available() -> bool {
-    cfg!(feature = "video-background") && crate::platform::native_visual::SUPPORTED
+    animated::video_available()
 }
 
 pub(super) fn media_available(kind: nebula_settings::BackgroundMediaKind) -> bool {
-    match kind {
-        nebula_settings::BackgroundMediaKind::Image => true,
-        nebula_settings::BackgroundMediaKind::Video => video_available(),
-        nebula_settings::BackgroundMediaKind::Gif => {
-            cfg!(feature = "gif-background") && crate::platform::native_visual::SUPPORTED
-        },
-    }
+    animated::media_available(kind)
 }
 
 pub(super) fn shader_available() -> bool {
-    cfg!(feature = "shader-background") && crate::platform::native_visual::SUPPORTED
-}
-
-pub(super) fn reload_shader(cx: &mut App) {
-    if !shader_available() {
-        show_shader_error(cx);
-        return;
-    }
-    #[cfg(feature = "shader-background")]
-    if let Some(actor) = cx.try_global::<VisualEffects>().and_then(|effects| effects.shader.clone())
-    {
-        actor.update(cx, |state, cx| state.reload(cx));
-    }
-}
-
-fn refresh_shader(rt: &nebula_settings::RuntimeSettings, cx: &mut App) {
-    let changed = cx.global::<VisualEffects>().effect_config != rt.background_effects;
-    cx.global_mut::<VisualEffects>().effect_config = rt.background_effects.clone();
-    if !shader_available() {
-        if changed && rt.background_effects.preset() != "off" {
-            show_shader_error(cx);
-        }
-        return;
-    }
-    #[cfg(feature = "shader-background")]
-    {
-        if rt.background_effects.preset() == "off" {
-            cx.global_mut::<VisualEffects>().shader.take();
-        } else {
-            let actor = cx.global::<VisualEffects>().shader.clone().unwrap_or_else(|| {
-                cx.new(|cx| shader::Shader::new(rt.background_effects.clone(), cx))
-            });
-            actor.update(cx, |state, cx| {
-                state.configure(
-                    rt.background_effects.clone(),
-                    rt.background_image_opacity > 0.0,
-                    cx,
-                )
-            });
-            cx.global_mut::<VisualEffects>().shader = Some(actor);
-        }
-    }
-}
-
-fn shader_ready(cx: &App) -> bool {
-    #[cfg(feature = "shader-background")]
-    {
-        return cx
-            .try_global::<VisualEffects>()
-            .and_then(|effects| effects.shader.as_ref())
-            .is_some_and(|actor| actor.read(cx).has_front());
-    }
-    #[cfg(not(feature = "shader-background"))]
-    {
-        let _ = cx;
-        false
-    }
-}
-
-#[cfg(feature = "shader-background")]
-fn refresh_video_visibility(cx: &mut App) {
-    let Some(effects) = cx.try_global::<VisualEffects>() else { return };
-    let enabled = effects.layout.opacity > 0.0 && !shader_ready(cx);
-    if let Some(actor) = effects.video.clone() {
-        actor.update(cx, |state, cx| state.set_enabled(enabled, cx));
-    }
-}
-
-#[cfg(feature = "shader-background")]
-fn paint_shader(
-    bounds: Bounds<Pixels>,
-    under_chrome: bool,
-    layout: WallpaperLayout,
-    window: &mut Window,
-    cx: &mut App,
-) -> bool {
-    let Some(actor) = cx.global::<VisualEffects>().shader.clone() else { return false };
-    let Some(frame) = actor.update(cx, |state, cx| state.touch(window, cx)) else { return false };
-    let native = frame.native();
-    let anchor = if layout.cover_chrome {
-        Bounds::new(point(px(0.0), px(0.0)), window.viewport_size())
-    } else {
-        bounds
-    };
-    let scale = window.scale_factor().max(0.5);
-    let (x, y, width, height) = wallpaper_rect(
-        f32::from(anchor.size.width) * scale,
-        f32::from(anchor.size.height) * scale,
-        native.size.width.0 as f32,
-        native.size.height.0 as f32,
-        layout.fit,
-        layout.alignment,
-    );
-    let target = Bounds::new(
-        anchor.origin + point(px(x / scale), px(y / scale)),
-        size(px(width / scale), px(height / scale)),
-    );
-    let radius = if under_chrome { px(0.0) } else { crate::gpui_shell::theme::card_radius(cx) };
-    match window.paint_background_shader_image(
-        bounds,
-        target,
-        image_corners(bounds, target, radius),
-        &frame.owner,
-        &native,
-    ) {
-        Ok(update) => {
-            let ready = update.tile.is_some();
-            if ready {
-                actor.update(cx, |state, cx| state.mark_presentable(cx));
-            }
-            if let Some(completion) = update.completion {
-                let id = window.window_handle().window_id();
-                actor.update(cx, |state, cx| state.wait_for_gpu(id, completion, cx));
-            }
-            ready
-        },
-        Err(error) => {
-            actor.update(cx, |state, cx| state.fail(&error, cx));
-            false
-        },
-    }
+    animated::shader_available()
 }
 
 pub(super) fn show_shader_error(cx: &mut App) {
@@ -902,22 +623,9 @@ pub(super) fn show_shader_error(cx: &mut App) {
     });
 }
 fn background_ready(effects: &VisualEffects, cx: &App) -> bool {
-    if shader_ready(cx) {
-        return true;
-    }
-    if effects.wallpaper.as_ref().is_some_and(|wp| wp.image.is_some()) {
-        return true;
-    }
-    #[cfg(feature = "video-background")]
-    {
-        return effects.video.as_ref().is_some_and(|v| v.read(cx).has_front())
-            || effects.retired_video.as_ref().is_some_and(|v| v.read(cx).has_front());
-    }
-    #[cfg(not(feature = "video-background"))]
-    {
-        let _ = cx;
-        false
-    }
+    animated::shader_ready(cx)
+        || effects.wallpaper.as_ref().is_some_and(|wp| wp.image.is_some())
+        || animated::media_ready(cx)
 }
 pub(super) fn show_video_error(cx: &mut App) {
     show_media_error(nebula_settings::BackgroundMediaKind::Video, cx);
@@ -967,16 +675,6 @@ pub(super) fn reload_terminal_effects(cx: &mut App) {
     cx.refresh_windows();
 }
 
-#[cfg(feature = "shader-background")]
-pub(super) fn effect_gpu_budget(cx: &mut App) -> Arc<gpui::StreamImageBudget> {
-    playback::gpu_budget(cx)
-}
-#[cfg(feature = "shader-background")]
-pub(super) fn effect_compiler_budget(cx: &mut App) -> gpui::StreamImageBudgets {
-    shader::compiler_budget(cx)
-}
-
-#[cfg(feature = "shader-background")]
 pub(super) fn show_terminal_effect_error(handle: gpui::AnyWindowHandle, cx: &mut App) {
     cx.defer(move |cx| {
         let text = crate::gpui_shell::config::ui_language(cx)
@@ -992,4 +690,17 @@ pub(super) fn show_terminal_effect_error(handle: gpui::AnyWindowHandle, cx: &mut
             log::debug!("effect window was released: {error}");
         }
     });
+}
+
+pub(super) fn reload_media(cx: &mut App) {
+    animated::reload_media(cx);
+}
+pub(super) fn reload_shader(cx: &mut App) {
+    animated::reload_shader(cx);
+}
+pub(super) fn effect_gpu_budget(cx: &mut App) -> Arc<gpui::StreamImageBudget> {
+    budgets::gpu_budget(cx)
+}
+pub(super) fn effect_compiler_budget(cx: &mut App) -> gpui::StreamImageBudgets {
+    budgets::compiler_budget(cx)
 }

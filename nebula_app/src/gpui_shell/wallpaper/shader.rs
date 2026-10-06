@@ -1,5 +1,7 @@
 //! 后台编译、固定尺寸 GPU 目标和按窗口归属的播放时钟。
+#[path = "shader/compile.rs"]
 mod compile;
+pub(super) use crate::gpui_shell::wallpaper::budgets::compiler_budget;
 
 use gpui::{
     App, AppContext, BackgroundShaderCancellation, Context, DevicePixels, StreamImageBudget,
@@ -7,6 +9,7 @@ use gpui::{
     WindowId, size,
 };
 use nebula_settings::BackgroundEffects;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     collections::HashMap,
     sync::{
@@ -19,9 +22,6 @@ use std::{
 const WIDTH: i32 = 960;
 const HEIGHT: i32 = 540;
 const FRAME_INTERVAL: Duration = Duration::from_millis(50);
-
-struct CompileBudget(Arc<StreamImageBudget>);
-impl gpui::Global for CompileBudget {}
 
 struct Placement {
     native: isize,
@@ -168,13 +168,17 @@ impl Shader {
         // 原生 HasWindowHandle 同名方法返回另一种句柄；这里必须使用 GPUI 窗口身份。
         let id = Window::window_handle(window).window_id();
         if !self.placements.contains_key(&id) {
-            let native = crate::platform::native_visual::window_token(window)?;
+            let RawWindowHandle::Win32(handle) =
+                HasWindowHandle::window_handle(window).ok()?.as_raw()
+            else {
+                return None;
+            };
             let activation = cx.observe_window_activation(window, |this, _, cx| this.reconcile(cx));
             let bounds = cx.observe_window_bounds(window, |this, _, cx| this.reconcile(cx));
             self.placements.insert(
                 id,
                 Placement {
-                    native,
+                    native: handle.hwnd.get(),
                     owner: window.create_stream_image(self.gpu.clone(), cx),
                     cancellation: BackgroundShaderCancellation::default(),
                     preparing: false,
@@ -422,14 +426,4 @@ impl Shader {
             }
         });
     }
-}
-
-pub(super) fn compiler_budget(cx: &mut App) -> StreamImageBudgets {
-    if !cx.has_global::<CompileBudget>() {
-        cx.set_global(CompileBudget(StreamImageBudget::with_allocation_limit(1, 1)));
-    }
-    StreamImageBudgets::new(
-        StreamImageBudget::with_allocation_limit(1, 1),
-        cx.global::<CompileBudget>().0.clone(),
-    )
 }

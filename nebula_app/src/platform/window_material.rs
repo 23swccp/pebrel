@@ -1,4 +1,4 @@
-//! Native window material selection and mutually exclusive DWM/Accent APIs.
+//! 原生窗口材质适配；窗口枚举和热应用生命周期仍由界面拥有。
 use gpui::{Window, WindowBackgroundAppearance};
 use nebula_settings::BlurModeName;
 #[cfg(windows)]
@@ -112,7 +112,11 @@ fn windows_build_number() -> u32 {
 /// 函数地址；backdrop 则用公开 DWM API。任一步失败都留日志，避免把 API 失败
 /// 再次误判成"设置没有热应用"。
 #[cfg(windows)]
-pub(crate) fn apply(window: &Window, blur: BlurModeName, appearance: WindowBackgroundAppearance) {
+pub(crate) fn apply_windows_accent_policy(
+    window: &Window,
+    blur: BlurModeName,
+    appearance: WindowBackgroundAppearance,
+) {
     use windows_sys::Win32::Foundation::{BOOL, HWND};
     use windows_sys::Win32::Graphics::Dwm::{
         DWM_BB_ENABLE, DWM_BLURBEHIND, DWMSBT_MAINWINDOW, DWMSBT_NONE, DWMSBT_TABBEDWINDOW,
@@ -307,9 +311,10 @@ pub(crate) fn apply(window: &Window, blur: BlurModeName, appearance: WindowBackg
 }
 
 #[cfg(not(windows))]
-pub(crate) fn apply(
-    _window: &Window,
-    _blur: BlurModeName,
-    _appearance: WindowBackgroundAppearance,
+pub(crate) fn apply_windows_accent_policy(
+    _: &Window,
+    _: BlurModeName,
+    _: WindowBackgroundAppearance,
 ) {
+    // 其它平台的材质完全由 GPUI 的 background appearance 通道处理。
 }

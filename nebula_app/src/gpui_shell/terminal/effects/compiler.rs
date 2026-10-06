@@ -1,7 +1,8 @@
 use anyhow::{Context, Result, ensure};
 use std::{io::Read, path::Path, sync::Arc};
 
-use crate::platform::native_visual as native;
+#[path = "../../wallpaper/shader/native_compile.rs"]
+mod native;
 
 pub const UNIFORM_BYTES: usize = (13 + 256) * 16;
 pub const ABI: &str = include_str!("abi.wgsl");
@@ -138,12 +139,12 @@ pub fn compile(source: &str) -> Result<Program> {
             .next()
             .context("missing native effect entry")?
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        passes.push(native::compile_hlsl(&hlsl, &name)?);
+        passes.push(native::compile(&hlsl, &name)?);
     }
     Ok(Program { passes: passes.into() })
 }
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

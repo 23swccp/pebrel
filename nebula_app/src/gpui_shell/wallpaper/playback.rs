@@ -1,9 +1,12 @@
 //! App-owned video clock, one decoder source and independently retired window textures.
 use super::video;
+use crate::gpui_shell::wallpaper::budgets::GlobalBudgets;
+pub(super) use crate::gpui_shell::wallpaper::budgets::gpu_budget;
 use gpui::{
     App, AppContext, Context, StreamImageBudget, StreamImageBudgets, StreamImageCompletion,
     StreamImageHandle, Subscription, Task, Window, WindowId,
 };
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -51,26 +54,16 @@ pub(super) struct Playback {
 }
 
 pub(super) fn allowed(native: isize) -> bool {
-    crate::platform::native_visual::is_visible(native)
-        && crate::platform::native_visual::is_foreground(native)
-}
-
-struct GlobalBudgets {
-    cpu: Arc<StreamImageBudget>,
-    gpu: Arc<StreamImageBudget>,
-    decoder: Arc<StreamImageBudget>,
-}
-impl gpui::Global for GlobalBudgets {}
-
-pub(super) fn gpu_budget(cx: &mut App) -> Arc<StreamImageBudget> {
-    if !cx.has_global::<GlobalBudgets>() {
-        cx.set_global(GlobalBudgets {
-            cpu: StreamImageBudget::with_allocation_limit(96 * 1024 * 1024, 16),
-            gpu: StreamImageBudget::new(64 * 1024 * 1024),
-            decoder: StreamImageBudget::with_allocation_limit(1, 1),
-        });
+    use windows::Win32::{
+        Foundation::HWND,
+        UI::WindowsAndMessaging::{GetForegroundWindow, IsIconic, IsWindowVisible},
+    };
+    let hwnd = HWND(native as *mut _);
+    unsafe {
+        IsWindowVisible(hwnd).as_bool()
+            && !IsIconic(hwnd).as_bool()
+            && GetForegroundWindow() == hwnd
     }
-    cx.global::<GlobalBudgets>().gpu.clone()
 }
 
 impl Playback {
@@ -148,7 +141,12 @@ impl Playback {
         }
         let id = Window::window_handle(window).window_id();
         if !self.placements.contains_key(&id) {
-            let native = crate::platform::native_visual::window_token(window)?;
+            let RawWindowHandle::Win32(handle) =
+                HasWindowHandle::window_handle(window).ok()?.as_raw()
+            else {
+                return None;
+            };
+            let native = handle.hwnd.get();
             let owner = window.create_stream_image(self.gpu.clone(), cx);
             let activation = cx.observe_window_activation(window, |this, _, cx| this.reconcile(cx));
             let bounds = cx.observe_window_bounds(window, |this, _, cx| this.reconcile(cx));
@@ -349,7 +347,7 @@ impl Playback {
         if !self.presentable {
             self.presentable = true;
             if !self.frozen && cx.has_global::<super::VisualEffects>() {
-                cx.global_mut::<super::VisualEffects>().retired_video.take();
+                cx.global_mut::<super::VisualEffects>().animated.retired_video.take();
             }
             cx.defer(super::refresh_surface_opacity);
             self.refresh_placements(cx);

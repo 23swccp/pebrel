@@ -9,7 +9,10 @@ mod completion_viewport;
 pub(super) mod confirmation;
 mod cursor_motion;
 mod cursor_painter;
-#[cfg(feature = "shader-background")]
+#[cfg(all(windows, feature = "shader-background"))]
+mod effects;
+#[cfg(not(all(windows, feature = "shader-background")))]
+#[path = "effects/unavailable.rs"]
 mod effects;
 pub mod element;
 mod event_mailbox;
