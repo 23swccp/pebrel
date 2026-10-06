@@ -2,9 +2,9 @@
 
 ## Status
 
-Implemented. Settings/compiler contracts, native multi-file pixel comparisons
-and list/activation controls have evidence. File-picker and live-edit reload
-interaction remain separate acceptance scopes.
+Implemented. Settings/compiler contracts, native multi-file pixel comparisons,
+list/activation controls, file selection and live-edit reload have evidence.
+Foreground performance and other native backends remain separate scopes.
 
 ## Context
 
@@ -75,6 +75,15 @@ expected transformed pixels after confirmation and original pixels after disable
 or removing all sources. File selection and reload of changed source contents
 are not covered by these runs. Native layout inspection also caught source names
 being squeezed into the select-control column; the list now uses content width.
+
+Separate native file-dialog runs select two files containing Chinese characters
+and a space in their filenames. The files are appended in the returned order,
+existing paths are retained, and activation is revoked. Cancelling the native
+dialog leaves settings bytes unchanged. A same-path source edit keeps the old
+program until explicit reload; terminal pixels then match the changed program.
+Invalid-source reload keeps original rendering, and restoring/reloading that file
+recovers the effect without changing settings. Resize checks observe the expected
+pixels at smaller, larger and restored surface extents.
 
 ## Supersedes
 

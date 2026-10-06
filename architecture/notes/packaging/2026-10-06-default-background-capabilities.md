@@ -2,8 +2,8 @@
 
 ## Status
 
-Implemented; default product build validation is required before delivery.
-This changes build inclusion, not saved activation or release publication.
+Implemented; Windows default-feature checks, builds and native window checks
+pass. This changes build inclusion, not saved activation or release publication.
 
 ## Context
 
@@ -49,9 +49,13 @@ build is not a published release.
 
 ## Validation
 
-Verify Cargo's resolved feature set without extra media flags, build that normal
-product entry, and run actual native settings/rendering checks. Keep the existing
-architecture and pin contracts. A metadata check alone does not prove playback.
+Cargo metadata resolves the video, GIF and shader features from defaults without
+additional feature arguments. The explicit media-free GPUI configuration omits
+those features. The normal Windows product entry passes check and build without
+extra media flags. Actual private windows display video, GIF, built-in WGSL and
+terminal postprocessing; these inactive captures do not establish foreground
+frame rate or optimized release performance. Architecture and revision pins
+remain unchanged. No distribution package or public release was created.
 
 ## Supersedes
 
