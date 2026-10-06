@@ -22,6 +22,7 @@ Installation candidate. Packages are built from one recorded source commit; publ
 
 #### Fixed
 
+- Fixed short-choice settings, including completion mode, reverting to dropdowns when translated labels exceeded a fixed width. Capsules keep readable choices and wrap as a group when needed.
 - Fixed WSL editor queries being lost in Win32 input mode and completion menus disappearing during background directory refresh; valid candidates remain selectable while the same input is refreshed.
 - Fixed Android remote-terminal swipes stopping at the current picture instead of reaching the desktop terminal. Authorized scrolling now follows the desktop's mouse, alternate-screen and scrollback behavior, and the phone reads the resulting viewport. Both phone and desktop require this version; phone-only reflow remains a local reading mode.
 - Fixed relay deployment omitting the private-key reader used by ordinary SSH connections. Key passphrases and unencrypted keys use the appropriate input rules, and a key-authenticated host can be added directly from relay installation.
@@ -36,6 +37,7 @@ Installation candidate. Packages are built from one recorded source commit; publ
 
 #### Improved
 
+- Grouped custom terminal effect files, reloading and playback policy under Advanced effects. Custom background files appear on demand, without changing saved activation or playback settings.
 - Improved completion at the actual editor caret for Git arguments, remotes, branches and workspace scripts, using the selected local, WSL or SSH execution environment rather than unrelated host metadata.
 - Kept mobile scroll acknowledgements compact instead of rebuilding a full window/tab snapshot for every wheel event. Existing frame-size, input-queue and no-replay limits remain in effect.
 
@@ -51,6 +53,7 @@ Installation candidate. Packages are built from one recorded source commit; publ
 
 #### 修复
 
+- 修复：补齐模式等短选项因翻译文案超出固定宽度而退回下拉框的问题；胶囊保留完整选项，空间不足时整组换行。
 - 修复：WSL 在 Win32 输入模式下丢失编辑器查询，以及后台目录刷新导致补齐菜单消失的问题；同一输入刷新期间，已有效的候选仍可选择。
 - 修复：Android 远程终端滑动停留在当前画面，没有传到桌面终端的问题。授权后的滚动沿用桌面的鼠标接管、备用屏与历史回滚行为，手机显示滚动后的视口。手机和桌面均需更新至本版本；手机重排阅读模式仍使用本地滚动。
 - 修复：中转部署遗漏普通 SSH 连接使用的私钥读取器。密钥口令和未加密私钥采用对应的输入规则，并可直接在中转安装页面添加密钥认证主机。
@@ -65,6 +68,7 @@ Installation candidate. Packages are built from one recorded source commit; publ
 
 #### 改进
 
+- 改进：自定义终端效果文件、重新加载和播放策略收进“高级效果”；自定义背景文件按需展示，保留已保存的启用状态和播放设置。
 - 改进：依据实际编辑缓冲与光标位置补全 Git 参数、远端、分支及工作区脚本，使用选定的本地、WSL 或 SSH 执行环境，而非无关的宿主元数据。
 - 改进：手机滚轮回执保持精简，不再为每次滑动重建整窗和标签状态快照；保留既有画面大小、输入队列及不重放限制。
 
