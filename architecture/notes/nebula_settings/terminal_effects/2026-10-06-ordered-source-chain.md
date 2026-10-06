@@ -2,8 +2,8 @@
 
 ## Status
 
-Implemented. Settings and compiler contracts pass; native multi-file rendering
-and real settings-control interaction are separate acceptance scopes.
+Implemented. Settings/compiler contracts and native multi-file pixel comparisons
+pass. Real settings-control interaction remains a separate acceptance scope.
 
 ## Context
 
@@ -58,6 +58,14 @@ activation independence, invalid paths, limits and reset. Compiler tests cover
 same-name independent sources, reversed order, a failed/missing later file and
 the aggregate pass limit. Product compilation, native window pixels and settings
 control interaction are distinct checks; unit results do not establish them.
+
+The Windows product build was run in four private-window scenarios: disabled,
+paths without activation, invert then halve-red, and the reverse file order.
+The inspected terminal text/background pixels match the corresponding ordered
+transforms within 0.5 of an 8-bit channel value. Inspected sidebar, titlebar and
+terminal padding are unchanged. Both source files deliberately use the same
+entry name. Commands complete normally in every run; these are not foreground
+performance measurements or real settings-control interaction tests.
 
 ## Supersedes
 
