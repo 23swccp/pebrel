@@ -27,7 +27,7 @@ pub(super) const GROUP_GAP: f32 = 48.0;
 const RAIL_W: f32 = 2.0;
 /// 内容相对轨道的缩进。标题左对齐轨道本身、行内容缩进这么多——标题是命名者
 /// 而不是组员，这个位置差比任何字重都更能表达层级。
-const RAIL_INDENT: f32 = 13.0;
+pub(super) const RAIL_INDENT: f32 = 13.0;
 /// 文字列的**最小**宽度。
 ///
 /// 一开始写的是"文本区 flex_1 + 控件右对齐"，实机怎么改都对不齐：

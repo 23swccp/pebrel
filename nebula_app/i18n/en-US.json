@@ -889,7 +889,7 @@
     "shader_source_description": "Choosing a file does not enable an effect. With custom WGSL enabled, choosing another file replaces it. Reload explicitly after editing.",
     "shader_choose": "Choose WGSL",
     "shader_reload": "Reload",
-    "shader_selecting": "Selecting?",
+    "shader_selecting": "Selecting…",
     "shader_prompt": "Select a terminal background WGSL file",
     "shader_failed": "The shader background failed; the underlying background is retained. Check WGSL syntax and the frame-parameter format, or choose another effect.",
     "shader_unavailable": "Realtime shader backgrounds are not enabled in this build or on this platform.",
@@ -904,7 +904,7 @@
     "gif_prompt": "Select an animated GIF background",
     "gif_failed": "The animated GIF could not be loaded. Check its file and dimensions, or choose another GIF.",
     "gif_unavailable": "Animated GIF backgrounds are not enabled in this build or on this platform.",
-    "media_selecting": "Selecting?",
+    "media_selecting": "Selecting…",
     "media_reload": "Replay"
   },
   "update": {

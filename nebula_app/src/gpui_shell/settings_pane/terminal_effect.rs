@@ -199,7 +199,7 @@ impl SettingsPane {
                     )
             })
             .collect::<Vec<_>>();
-        self.row_with_reset(
+        let header = self.row_with_reset(
             language.text(Message::TerminalEffectTitle),
             language.text(if available {
                 Message::TerminalEffectDescription
@@ -213,54 +213,62 @@ impl SettingsPane {
                     show_source_error(&error, window, cx);
                 }
             },
-            v_flex()
-                .gap_2()
-                .min_w_0()
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .flex_wrap()
-                        .items_center()
-                        .child(
-                            NebulaButton::new("terminal-effect-choose")
-                                .label(language.text(if busy {
-                                    Message::TerminalEffectChoosing
-                                } else {
-                                    Message::TerminalEffectChoose
-                                }))
-                                .disabled(
-                                    busy || !available
-                                        || config.paths.len()
-                                            >= nebula_settings::TerminalEffects::PATH_KEYS.len(),
-                                )
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.choose_terminal_effect(window, cx)
-                                })),
-                        )
-                        .child(
-                            NebulaButton::new("terminal-effect-toggle")
-                                .label(language.text(if config.enabled {
-                                    Message::TerminalEffectDisable
-                                } else {
-                                    Message::TerminalEffectEnable
-                                }))
-                                .disabled(busy || !available)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.toggle_terminal_effect(window, cx)
-                                })),
-                        )
-                        .child(
-                            NebulaButton::new("terminal-effect-reload")
-                                .label(language.text(Message::TerminalEffectReload))
-                                .disabled(busy || !available || !config.enabled)
-                                .on_click(cx.listener(|_, _, _, cx| {
-                                    super::super::wallpaper::reload_terminal_effects(cx)
-                                })),
-                        ),
-                )
-                .children(sources),
+            v_flex().gap_2().min_w_0().child(
+                h_flex()
+                    .gap_2()
+                    .flex_wrap()
+                    .items_center()
+                    .child(
+                        NebulaButton::new("terminal-effect-choose")
+                            .label(language.text(if busy {
+                                Message::TerminalEffectChoosing
+                            } else {
+                                Message::TerminalEffectChoose
+                            }))
+                            .disabled(
+                                busy || !available
+                                    || config.paths.len()
+                                        >= nebula_settings::TerminalEffects::PATH_KEYS.len(),
+                            )
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.choose_terminal_effect(window, cx)
+                            })),
+                    )
+                    .child(
+                        NebulaButton::new("terminal-effect-toggle")
+                            .label(language.text(if config.enabled {
+                                Message::TerminalEffectDisable
+                            } else {
+                                Message::TerminalEffectEnable
+                            }))
+                            .disabled(busy || !available)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.toggle_terminal_effect(window, cx)
+                            })),
+                    )
+                    .child(
+                        NebulaButton::new("terminal-effect-reload")
+                            .label(language.text(Message::TerminalEffectReload))
+                            .disabled(busy || !available || !config.enabled)
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                super::super::wallpaper::reload_terminal_effects(cx)
+                            })),
+                    ),
+            ),
             cx,
-        )
+        );
+        // 文件列表需要正文的宽度，不能塞进为单个下拉框预留的控件列。
+        v_flex().w_full().child(header).when(!sources.is_empty(), |panel| {
+            panel.child(
+                v_flex()
+                    .w_full()
+                    .pl(px(super::design::RAIL_INDENT))
+                    .pr_4()
+                    .pb(px(self.row_padding_y()))
+                    .gap_2()
+                    .children(sources),
+            )
+        })
     }
 }
 
