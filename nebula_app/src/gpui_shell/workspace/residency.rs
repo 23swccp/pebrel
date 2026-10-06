@@ -1129,6 +1129,9 @@ mod tests {
     #[gpui::test]
     fn remote_scroll_returns_compact_reply_without_switching_tabs(cx: &mut gpui::TestAppContext) {
         use super::*;
+        use crate::gpui_shell::workspace::windowing;
+        use gpui::AppContext as _;
+        use gpui_component::Root;
         cx.update(|cx| {
             gpui_component::init(cx);
             crate::gpui_shell::workspace::init(cx);
@@ -1169,12 +1172,13 @@ mod tests {
                 }
                 let active = workspace.active;
                 let target = workspace.tabs[0].focused_view().unwrap().read(cx).pane_id;
-                let request = crate::runtime_api::ApiRequest::new(
-                    "fixture".into(),
-                    "pane.scroll",
-                    json!({"window_id":1,"pane_id":target,"lines":1,"column":0,"row":0}),
-                );
-                let command = RuntimeCommand::from_request(&request).unwrap();
+                let command = RuntimeCommand::ScrollPane {
+                    window_id: Some(1),
+                    pane_id: target,
+                    lines: 1,
+                    column: 0,
+                    row: 0,
+                };
                 let reply = workspace.execute_runtime_command(&command, window, cx).unwrap();
                 assert!(reply.get("snapshot").is_none());
                 assert_eq!(reply["action"]["pane_id"], target);
