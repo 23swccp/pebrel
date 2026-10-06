@@ -7,6 +7,7 @@ use gpui::{
     WindowId, size,
 };
 use nebula_settings::BackgroundEffects;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     collections::HashMap,
     sync::{
@@ -168,13 +169,17 @@ impl Shader {
         // 原生 HasWindowHandle 同名方法返回另一种句柄；这里必须使用 GPUI 窗口身份。
         let id = Window::window_handle(window).window_id();
         if !self.placements.contains_key(&id) {
-            let native = crate::platform::native_visual::window_token(window)?;
+            let RawWindowHandle::Win32(handle) =
+                HasWindowHandle::window_handle(window).ok()?.as_raw()
+            else {
+                return None;
+            };
             let activation = cx.observe_window_activation(window, |this, _, cx| this.reconcile(cx));
             let bounds = cx.observe_window_bounds(window, |this, _, cx| this.reconcile(cx));
             self.placements.insert(
                 id,
                 Placement {
-                    native,
+                    native: handle.hwnd.get(),
                     owner: window.create_stream_image(self.gpu.clone(), cx),
                     cancellation: BackgroundShaderCancellation::default(),
                     preparing: false,

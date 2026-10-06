@@ -2,7 +2,6 @@ mod compiler;
 mod frame;
 
 use super::{colors::Palette, cursor_painter::CursorPaint, view::TerminalView};
-use crate::platform::native_visual::{self, is_foreground};
 use gpui::{
     App, AppContext, BackgroundShaderCancellation, Bounds, Context, DevicePixels, Entity, Pixels,
     PostprocessDescriptor, PostprocessFeedback, StreamImageBudget, StreamImageBudgets,
@@ -10,6 +9,7 @@ use gpui::{
 };
 use nebula_settings::{EffectAnimation, TerminalEffects};
 use nebula_terminal::term::color::Colors;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::{
     sync::{
         Arc,
@@ -19,6 +19,11 @@ use std::{
 };
 
 const GPU_LIMIT: u64 = 64 * 1024 * 1024;
+
+fn is_foreground(native: isize) -> bool {
+    use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::GetForegroundWindow};
+    native != 0 && unsafe { GetForegroundWindow() == HWND(native as *mut _) }
+}
 
 pub(super) struct TerminalEffect {
     view: WeakEntity<TerminalView>,
@@ -46,7 +51,13 @@ pub(super) struct TerminalEffect {
 
 impl TerminalEffect {
     fn new(view: WeakEntity<TerminalView>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let native = native_visual::window_token(window).unwrap_or(0);
+        let native = HasWindowHandle::window_handle(window)
+            .ok()
+            .and_then(|handle| match handle.as_raw() {
+                RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
+                _ => None,
+            })
+            .unwrap_or(0);
         let activation = cx.observe_window_activation(window, |this, window, cx| {
             if !window.is_window_active() {
                 this.history.unfocus();
@@ -132,6 +143,10 @@ impl TerminalEffect {
     }
 
     fn permitted(&self, cx: &App) -> bool {
+        use windows::Win32::{
+            Foundation::HWND,
+            UI::WindowsAndMessaging::{IsIconic, IsWindowVisible},
+        };
         if !self.config.enabled
             || self.failed
             || !self.ready
@@ -147,17 +162,26 @@ impl TerminalEffect {
         if !view.effect_output_visible() {
             return false;
         }
-        native_visual::is_visible(self.native)
-            && (self.config.animation == EffectAnimation::Always
-                || (is_foreground(self.native) && view.effect_pane_focused()))
+        let hwnd = HWND(self.native as *mut _);
+        unsafe {
+            IsWindowVisible(hwnd).as_bool()
+                && !IsIconic(hwnd).as_bool()
+                && (self.config.animation == EffectAnimation::Always
+                    || (is_foreground(self.native) && view.effect_pane_focused()))
+        }
     }
 
     fn reconcile(&mut self, cx: &mut Context<Self>) {
+        use windows::Win32::{
+            Foundation::HWND,
+            UI::WindowsAndMessaging::{IsIconic, IsWindowVisible},
+        };
+        let hwnd = HWND(self.native as *mut _);
         if !is_foreground(self.native) {
             self.history.unfocus();
         }
         let visible = self.view.upgrade().is_some_and(|view| view.read(cx).effect_output_visible())
-            && native_visual::is_visible(self.native);
+            && unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() };
         if !visible {
             self.preparation_cancelled.cancel();
             self.preparing.take();
@@ -334,9 +358,6 @@ pub(super) fn paint(
     window: &mut Window,
     cx: &mut App,
 ) {
-    if !crate::gpui_shell::wallpaper::shader_available() {
-        return;
-    }
     let (config, revision) = crate::gpui_shell::wallpaper::terminal_effect_configuration(cx);
     if !config.enabled {
         view.update(cx, |view, _| {

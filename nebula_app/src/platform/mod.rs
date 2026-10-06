@@ -30,8 +30,6 @@ pub(crate) mod global_shortcut;
 #[cfg(all(windows, feature = "gpui-shell"))]
 pub(crate) mod keyboard;
 pub(crate) mod local_paths;
-#[cfg(feature = "gpui-shell")]
-pub(crate) mod native_visual;
 pub mod notifications;
 pub(crate) mod pi_session;
 pub(crate) mod process;
@@ -48,8 +46,6 @@ pub mod startup;
 #[cfg(unix)]
 pub(crate) mod tray_native;
 pub(crate) mod update_installation;
-#[cfg(feature = "gpui-shell")]
-pub(crate) mod window_backdrop;
 #[cfg(feature = "gpui-shell")]
 pub(crate) mod window_chrome;
 #[cfg(all(unix, feature = "gpui-shell"))]
