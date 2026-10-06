@@ -51,6 +51,8 @@ pub(crate) mod update_installation;
 #[cfg(feature = "gpui-shell")]
 pub(crate) mod window_backdrop;
 #[cfg(feature = "gpui-shell")]
+pub(crate) mod window_capture;
+#[cfg(feature = "gpui-shell")]
 pub(crate) mod window_chrome;
 #[cfg(all(unix, feature = "gpui-shell"))]
 pub(crate) mod window_visibility;
