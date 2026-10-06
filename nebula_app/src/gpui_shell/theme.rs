@@ -1,6 +1,9 @@
 use gpui::{App, Bounds, Hsla, Pixels, Rgba as GpuiRgba, Window, fill, hsla, point, px, size};
 use gpui_component::{ActiveTheme as _, Theme, ThemeMode};
 
+mod transition;
+pub(crate) use transition::ThemeTransition;
+
 use crate::display::color::Rgb;
 use crate::display::ui::theme::NebulaTheme;
 use crate::renderer::ui::Rgba;

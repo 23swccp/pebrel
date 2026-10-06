@@ -1,4 +1,48 @@
 use super::*;
+use gpui::{Animation, AnimationExt as _, relative};
+use std::cell::Cell;
+use std::rc::Rc;
+
+#[derive(Default)]
+pub(super) struct SearchFocus {
+    focused: bool,
+    generation: usize,
+    from: f32,
+    progress: Rc<Cell<f32>>,
+}
+
+impl SearchFocus {
+    pub(super) fn set_focused(&mut self, focused: bool) {
+        if self.focused != focused {
+            self.from = self.progress.get();
+            self.focused = focused;
+            self.generation = self.generation.wrapping_add(1);
+        }
+    }
+
+    fn underline(&self, color: Hsla) -> gpui::AnyElement {
+        let target = if self.focused { 1.0 } else { 0.0 };
+        let line = div().absolute().bottom_0().h(px(1.0)).bg(color);
+        if self.from == target {
+            return line
+                .left(relative((1.0 - target) * 0.5))
+                .w(relative(target))
+                .into_any_element();
+        }
+        let from = self.from;
+        let progress = self.progress.clone();
+        line.with_animation(
+            ("settings-search-focus-line", self.generation),
+            Animation::new(Duration::from_millis(180)).with_easing(crate::gpui_shell::motion::ease),
+            move |line, delta| {
+                let value = from + (target - from) * delta;
+                progress.set(value);
+                line.left(relative((1.0 - value) * 0.5)).w(relative(value))
+            },
+        )
+        .into_any_element()
+    }
+}
 
 impl SettingsPane {
     pub(super) fn matching_settings_sections(&self, cx: &App) -> Vec<usize> {
@@ -27,18 +71,15 @@ impl SettingsPane {
 
     pub(super) fn render_nav_search(
         &self,
-        window: &Window,
+        _window: &Window,
         cx: &Context<Self>,
     ) -> gpui::AnyElement {
         let language = crate::gpui_shell::config::ui_language(cx);
-        let focused = self.settings_search_input.read(cx).focus_handle(cx).is_focused(window);
-        let line =
-            if focused { cx.theme().link } else { crate::gpui_shell::theme::settings_hairline(cx) };
         div()
+            .relative()
             .mx_1()
             .mb(px(12.0))
-            .border_b_1()
-            .border_color(line)
+            .pb(px(1.0))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
@@ -61,6 +102,16 @@ impl SettingsPane {
                     )
                     .aria_label(language.pick("在全部设置中搜索", "Search all settings")),
             )
+            .child(
+                div()
+                    .absolute()
+                    .bottom_0()
+                    .left_0()
+                    .w_full()
+                    .h(px(1.0))
+                    .bg(crate::gpui_shell::theme::settings_hairline(cx)),
+            )
+            .child(self.settings_search_focus.underline(cx.theme().link))
             .into_any_element()
     }
 }
