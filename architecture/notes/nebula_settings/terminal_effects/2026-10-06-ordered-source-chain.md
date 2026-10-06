@@ -85,6 +85,15 @@ Invalid-source reload keeps original rendering, and restoring/reloading that fil
 recovers the effect without changing settings. Resize checks observe the expected
 pixels at smaller, larger and restored surface extents.
 
+Rendered GPUI control tests cover keyboard selection, explicit confirmation and
+cancellation, restored focus, reload and removing the final source. Cancelled or
+empty picker responses preserve enabled settings; delayed picker results and
+confirmation of a replaced source do not overwrite/authorize newer preferences.
+These tests use the existing shared-settings fixture and serial group. The
+component's declared dialog transition duration is advanced on the deterministic
+test clock before checking restored keyboard focus. App-native unit tests also
+check frame integer flags/cursor history and the shader search aliases.
+
 ## Supersedes
 
 Extends the single-source persistence described in
