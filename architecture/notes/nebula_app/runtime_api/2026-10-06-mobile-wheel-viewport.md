@@ -29,7 +29,9 @@ Add `pane.scroll` to the authenticated input policy, with explicit mobile window
 and pane IDs, bounded signed line counts, and desktop grid coordinates. Advertise
 the capability only for the GPUI implementation. The phone negotiates it before
 dispatch and reuses the existing non-replaying writer, pending limits, and owner
-checks. Input permission remains required even in composer mode.
+checks. Input permission remains required even in composer mode. Scroll replies
+contain only the action result: wheel gestures do not rebuild a full window/tab
+snapshot merely to discard it at the bridge.
 
 Pan the phone's locally clipped grid first. At its vertical boundary, accumulate
 fractional remaining movement and forward whole rows. Pinch zoom and selection
