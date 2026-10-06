@@ -1,13 +1,15 @@
 # Terminal WGSL effects
 
-These sources use the application's terminal-effect ABI. Select a `.wgsl` file
-in **Terminal effects**, then enable it separately from the background. Changing
-the source disables execution until enabled again. Reload explicitly recompiles
-the file. This integration currently targets the optional Windows shader build;
+These sources use the application's terminal-effect ABI. Add `.wgsl` files
+in **Terminal effects**, arrange their order, then enable the chain separately from
+the background. Adding files disables execution until enabled again. Moving or
+removing existing files preserves activation; removing the last file disables it.
+Reload explicitly recompiles all files. This integration currently targets the optional Windows shader build;
 native UI and other-platform acceptance are tracked separately.
 
-Each file contains one to eight `@fragment` entry points. Declaration order is
-execution order; each pass reads the previous pass's result. Input and output are
+The chain supports up to eight files and eight total `@fragment` entry points.
+Files run in list order; entries within each file run in declaration order;
+each pass reads the previous pass's result. Input and output are
 local physical pixels with a top-left origin. The renderer uses two reusable
 full-resolution textures and does not reduce terminal text resolution.
 

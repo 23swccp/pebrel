@@ -11,6 +11,24 @@ pub struct Program {
     pub passes: Arc<[Arc<[u8]>]>,
 }
 
+pub fn load_chain(paths: &[std::path::PathBuf]) -> Result<Program> {
+    ensure!(
+        !paths.is_empty() && paths.len() <= 8,
+        "effects require one through eight source files"
+    );
+    let mut passes = Vec::new();
+    for path in paths {
+        let program =
+            load(path).with_context(|| format!("compile effect source {}", path.display()))?;
+        ensure!(
+            passes.len() + program.passes.len() <= 8,
+            "effect chain exceeds eight total passes"
+        );
+        passes.extend(program.passes.iter().cloned());
+    }
+    Ok(Program { passes: passes.into() })
+}
+
 pub fn load(path: &Path) -> Result<Program> {
     let file = std::fs::File::open(path).context("open terminal effect WGSL")?;
     ensure!(file.metadata()?.is_file(), "effect source is not a regular file");
@@ -157,5 +175,65 @@ mod tests {
             })
             .collect::<String>();
         assert!(compile(&too_many).is_err());
+    }
+
+    #[test]
+    fn files_keep_their_order_and_independent_entry_names() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory.path().join("first.wgsl");
+        let second = directory.path().join("second.wgsl");
+        std::fs::write(
+            &first,
+            "@fragment fn main()->@location(0) vec4<f32>{return vec4<f32>(0.25);}",
+        )
+        .unwrap();
+        std::fs::write(
+            &second,
+            "@fragment fn main()->@location(0) vec4<f32>{return vec4<f32>(0.75);}",
+        )
+        .unwrap();
+        let first_pass = load(&first).unwrap().passes[0].clone();
+        let second_pass = load(&second).unwrap().passes[0].clone();
+        assert_ne!(first_pass, second_pass);
+        assert_eq!(
+            &*load_chain(&[first.clone(), second.clone()]).unwrap().passes,
+            &[first_pass.clone(), second_pass.clone()],
+        );
+        assert_eq!(&*load_chain(&[second, first]).unwrap().passes, &[second_pass, first_pass],);
+    }
+
+    #[test]
+    fn later_source_failure_rejects_the_entire_chain() {
+        let directory = tempfile::tempdir().unwrap();
+        let valid = directory.path().join("valid.wgsl");
+        let invalid = directory.path().join("invalid.wgsl");
+        std::fs::write(
+            &valid,
+            "@fragment fn main()->@location(0) vec4<f32>{return vec4<f32>(1.0);}",
+        )
+        .unwrap();
+        std::fs::write(&invalid, "not WGSL").unwrap();
+        let error = load_chain(&[valid.clone(), invalid]).err().unwrap();
+        assert!(error.to_string().contains("invalid.wgsl"));
+        assert!(load_chain(&[valid, directory.path().join("missing.wgsl")]).is_err());
+    }
+
+    #[test]
+    fn total_pass_limit_applies_across_files_not_only_within_each_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("four-passes.wgsl");
+        let source = (0..4)
+            .map(|i| {
+                format!(
+                    "@fragment fn pass{i}()->@location(0) vec4<f32>{{return vec4<f32>(1.0);}}\n"
+                )
+            })
+            .collect::<String>();
+        std::fs::write(&path, source).unwrap();
+        assert_eq!(load_chain(&[path.clone(), path.clone()]).unwrap().passes.len(), 8);
+        let error = load_chain(&[path.clone(), path.clone(), path.clone()]).err().unwrap();
+        assert!(error.to_string().contains("eight total passes"));
+        assert!(load_chain(&[]).is_err());
+        assert!(load_chain(&vec![path; 9]).is_err());
     }
 }

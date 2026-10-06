@@ -1334,23 +1334,28 @@
   },
   "terminal_effect": {
     "title": "终端效果",
-    "description": "独立于背景，对终端内容应用 WGSL 效果。选择文件不会自动启用。",
-    "choose": "选择 WGSL",
+    "description": "独立于背景，按列表顺序运行 WGSL。添加文件后需重新启用。",
+    "choose": "添加 WGSL",
     "choosing": "选择中…",
     "enable": "启用",
     "disable": "停用",
     "reload": "重新加载",
     "confirm": "启用终端 WGSL 效果？",
-    "confirm_description": "在终端画面上运行所选 WGSL，可改变文字外观。现有背景设置保持不变。",
+    "confirm_description": "按列表顺序在终端画面上运行 WGSL。现有背景设置保持不变。",
     "missing": "请先选择 WGSL 文件。",
     "failed": "终端效果加载失败，已保留原始终端画面。请检查文件后重新加载。",
     "unsupported": "此构建尚未提供终端效果。",
-    "prompt": "选择终端效果 WGSL 文件",
+    "prompt": "添加终端效果 WGSL 文件",
     "animation": "效果动画",
     "animation_description": "选择终端内容变化之外的效果刷新时机。",
     "animation_off": "仅内容变化时",
     "animation_focused": "仅前台聚焦终端",
     "animation_always": "所有可见终端",
-    "pick_failed": "选择效果文件失败，请重试。"
+    "pick_failed": "选择效果文件失败，请重试。",
+    "move_up": "上移",
+    "move_down": "下移",
+    "remove": "移除",
+    "sources_invalid": "最多添加八个 WGSL 文件，路径需符合设置文件格式。",
+    "save_failed": "效果列表保存失败，请检查设置目录的写入权限后重试。"
   }
 }

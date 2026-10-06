@@ -73,6 +73,13 @@ const RESET_KEYS: &[&str] = &[
     "background_wgsl_path",
     "terminal_effect_enabled",
     "terminal_effect_path",
+    "terminal_effect_path_2",
+    "terminal_effect_path_3",
+    "terminal_effect_path_4",
+    "terminal_effect_path_5",
+    "terminal_effect_path_6",
+    "terminal_effect_path_7",
+    "terminal_effect_path_8",
     "terminal_effect_animation",
     "panel_resize",
     "sidebar_w",
@@ -310,6 +317,23 @@ mod tests {
         for key in crate::BackgroundEffects::KEYS {
             assert!(RESET_KEYS.contains(key));
         }
+    }
+
+    #[test]
+    fn reset_clears_every_terminal_effect_source_slot() {
+        let mut text = String::from(
+            "terminal_effect_enabled=true\nterminal_effect_animation=always\ncustom=keep\n",
+        );
+        for key in crate::TerminalEffects::PATH_KEYS {
+            assert!(RESET_KEYS.contains(&key));
+            text.push_str(&format!("{key}=effect.wgsl\n"));
+        }
+        let restored = default_settings_text(&text);
+        assert_eq!(restored, "custom=keep\n");
+        assert_eq!(
+            crate::TerminalEffects::from_raw(&RawSettings::from_text(&restored)),
+            crate::TerminalEffects::default(),
+        );
     }
 
     #[test]

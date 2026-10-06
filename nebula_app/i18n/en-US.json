@@ -1334,23 +1334,28 @@
   },
   "terminal_effect": {
     "title": "Terminal effects",
-    "description": "Apply WGSL to terminal content independently of its background. Selecting a source does not enable it.",
-    "choose": "Choose WGSL",
+    "description": "Run an ordered WGSL chain independently of the background. Adding files disables execution until enabled again.",
+    "choose": "Add WGSL",
     "choosing": "Choosing…",
     "enable": "Enable",
     "disable": "Disable",
     "reload": "Reload",
     "confirm": "Enable terminal WGSL effects?",
-    "confirm_description": "Run the selected WGSL on terminal surfaces. It can change text appearance. Existing background settings are kept.",
+    "confirm_description": "Run the listed WGSL files in order on terminal surfaces. Existing background settings are kept.",
     "missing": "Choose a WGSL source first.",
     "failed": "Terminal effect failed. Original terminal rendering is kept; check the source and reload.",
     "unsupported": "Terminal effects are not available in this build.",
-    "prompt": "Choose a terminal effect WGSL file",
+    "prompt": "Add terminal effect WGSL files",
     "animation": "Effect animation",
     "animation_description": "Choose when effects refresh between terminal content changes.",
     "animation_off": "On content changes",
     "animation_focused": "Focused terminal",
     "animation_always": "All visible terminals",
-    "pick_failed": "Effect file selection failed. Try again."
+    "pick_failed": "Effect file selection failed. Try again.",
+    "move_up": "Up",
+    "move_down": "Down",
+    "remove": "Remove",
+    "sources_invalid": "Choose at most eight WGSL files with paths supported by the settings format.",
+    "save_failed": "Could not save the effect list. Check that the settings location is writable, then try again."
   }
 }

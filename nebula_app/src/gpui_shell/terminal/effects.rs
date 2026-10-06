@@ -109,7 +109,7 @@ impl TerminalEffect {
     }
 
     fn configure(&mut self, config: TerminalEffects, revision: u64) {
-        if self.config.path != config.path
+        if self.config.paths != config.paths
             || self.config.enabled != config.enabled
             || self.revision != revision
         {
@@ -219,8 +219,10 @@ impl TerminalEffect {
         if self.program.is_some() || self.compiling.is_some() || self.failed {
             return;
         }
-        let path = match self.config.request() {
-            Ok(Some(path)) => nebula_settings::settings_dir().join(path),
+        let paths: Vec<_> = match self.config.request() {
+            Ok(Some(paths)) => {
+                paths.iter().map(|path| nebula_settings::settings_dir().join(path)).collect()
+            },
             Ok(None) => return,
             Err(error) => {
                 self.fail(&error, cx);
@@ -236,7 +238,7 @@ impl TerminalEffect {
             loop {
                 anyhow::ensure!(!cancelled.load(Ordering::Acquire), "effect compile cancelled");
                 match jobs.reserve_preparation() {
-                    Ok(_permit) => return compiler::load(&path).map(Arc::new),
+                    Ok(_permit) => return compiler::load_chain(&paths).map(Arc::new),
                     Err(error) if Instant::now() >= deadline => return Err(error),
                     Err(_) => executor.timer(Duration::from_millis(10)).await,
                 }
