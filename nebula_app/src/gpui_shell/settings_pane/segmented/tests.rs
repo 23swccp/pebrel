@@ -6,10 +6,9 @@ struct SegmentsHost(Entity<SettingsPane>, &'static str);
 impl Render for SegmentsHost {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.0.read(cx).focus_handle.clone();
-        div()
-            .size_full()
-            .track_focus(&focus)
-            .child(self.0.update(cx, |pane, cx| pane.select_row(self.1, "Choice", "Description", cx).into_any_element()))
+        div().size_full().track_focus(&focus).child(self.0.update(cx, |pane, cx| {
+            pane.select_row(self.1, "Choice", "Description", cx).into_any_element()
+        }))
     }
 }
 
@@ -57,6 +56,8 @@ fn capsule_uses_inset_thumb_full_hit_targets_and_keyboard_selection(cx: &mut gpu
         });
         let track = window.debug_bounds("settings-choices-tab_reveal").unwrap();
         let thumb = window.debug_bounds("settings-indicator-tab_reveal").unwrap();
+        // 点击后行内撤销控件可能出现，浮块与按钮必须用同一帧的布局比较。
+        let slot = window.debug_bounds(selector).unwrap();
         assert!((f32::from(thumb.left() - slot.left())).abs() < 0.1);
         assert!((f32::from(thumb.size.width - slot.size.width)).abs() < 0.1);
         assert_eq!(thumb.top(), slot.top());
@@ -89,7 +90,11 @@ fn capsule_uses_inset_thumb_full_hit_targets_and_keyboard_selection(cx: &mut gpu
 fn completion_capsules_keep_all_chinese_choices_at_large_font_size(cx: &mut gpui::TestAppContext) {
     let _lock = lock_theme_studio();
     let _settings = SettingsBytesGuard::capture();
-    nebula_settings::persist_keys(&[("completion_style", "hybrid".into()), ("language", "zh-CN".into())]).unwrap();
+    nebula_settings::persist_keys(&[
+        ("completion_style", "hybrid".into()),
+        ("language", "zh-CN".into()),
+    ])
+    .unwrap();
     cx.update(|cx| {
         gpui_component::init(cx);
         cx.set_reduce_motion(true);
@@ -110,7 +115,9 @@ fn completion_capsules_keep_all_chinese_choices_at_large_font_size(cx: &mut gpui
         ("popup", "settings-choice-completion_style-popup"),
         ("hybrid", "settings-choice-completion_style-hybrid"),
     ] {
-        window.update(|window, cx| { let _ = window.draw(cx); });
+        window.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
         assert!(window.debug_bounds("settings-segments-dropdown-completion_style").is_none());
         let track = window.debug_bounds("settings-choices-completion_style").unwrap();
         assert!(track.right() <= px(500.0));

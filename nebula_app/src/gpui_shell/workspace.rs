@@ -47,9 +47,9 @@ use nebula_split::{DIVIDER_GAP, HIT_SLOP, RemoveOutcome, SplitDirection, SplitNa
 
 mod agents;
 mod closing;
-mod render;
 mod command_manager;
 mod keyboard_bindings;
+mod render;
 #[cfg(test)]
 use keyboard_bindings::{
     STATIC_DEFAULT_COMBOS, custom_workspace_binding, default_workspace_bindings, gpui_binding_combo,
@@ -2773,7 +2773,6 @@ impl NebulaWorkspace {
         cx.notify();
     }
 }
-
 
 #[cfg(test)]
 mod tests;
