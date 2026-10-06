@@ -1,5 +1,7 @@
 //! App-owned video clock, one decoder source and independently retired window textures.
 use super::video;
+use crate::gpui_shell::wallpaper::budgets::GlobalBudgets;
+pub(super) use crate::gpui_shell::wallpaper::budgets::gpu_budget;
 use gpui::{
     App, AppContext, Context, StreamImageBudget, StreamImageBudgets, StreamImageCompletion,
     StreamImageHandle, Subscription, Task, Window, WindowId,
@@ -62,24 +64,6 @@ pub(super) fn allowed(native: isize) -> bool {
             && !IsIconic(hwnd).as_bool()
             && GetForegroundWindow() == hwnd
     }
-}
-
-struct GlobalBudgets {
-    cpu: Arc<StreamImageBudget>,
-    gpu: Arc<StreamImageBudget>,
-    decoder: Arc<StreamImageBudget>,
-}
-impl gpui::Global for GlobalBudgets {}
-
-pub(super) fn gpu_budget(cx: &mut App) -> Arc<StreamImageBudget> {
-    if !cx.has_global::<GlobalBudgets>() {
-        cx.set_global(GlobalBudgets {
-            cpu: StreamImageBudget::with_allocation_limit(96 * 1024 * 1024, 16),
-            gpu: StreamImageBudget::new(64 * 1024 * 1024),
-            decoder: StreamImageBudget::with_allocation_limit(1, 1),
-        });
-    }
-    cx.global::<GlobalBudgets>().gpu.clone()
 }
 
 impl Playback {
@@ -363,7 +347,7 @@ impl Playback {
         if !self.presentable {
             self.presentable = true;
             if !self.frozen && cx.has_global::<super::VisualEffects>() {
-                cx.global_mut::<super::VisualEffects>().retired_video.take();
+                cx.global_mut::<super::VisualEffects>().animated.retired_video.take();
             }
             cx.defer(super::refresh_surface_opacity);
             self.refresh_placements(cx);
