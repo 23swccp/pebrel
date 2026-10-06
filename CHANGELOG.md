@@ -4,7 +4,7 @@ Every release entry is provided in English and Simplified Chinese.
 
 每个版本条目均同时提供英文和简体中文说明。
 
-## 2.1.2 - 2026-10-06
+## 2.1.2 - 2026-10-07
 
 Installation candidate. Packages are built from one recorded source commit; publication as a GitHub Release is a separate step.
 
@@ -22,6 +22,7 @@ Installation candidate. Packages are built from one recorded source commit; publ
 
 #### Fixed
 
+- Fixed WSL editor queries being lost in Win32 input mode and completion menus disappearing during background directory refresh; valid candidates remain selectable while the same input is refreshed.
 - Fixed Android remote-terminal swipes stopping at the current picture instead of reaching the desktop terminal. Authorized scrolling now follows the desktop's mouse, alternate-screen and scrollback behavior, and the phone reads the resulting viewport. Both phone and desktop require this version; phone-only reflow remains a local reading mode.
 - Fixed relay deployment omitting the private-key reader used by ordinary SSH connections. Key passphrases and unencrypted keys use the appropriate input rules, and a key-authenticated host can be added directly from relay installation.
 - Fixed configured startup directories being ignored on cold starts and when opening another window in a resident application.
@@ -50,6 +51,7 @@ Installation candidate. Packages are built from one recorded source commit; publ
 
 #### 修复
 
+- 修复：WSL 在 Win32 输入模式下丢失编辑器查询，以及后台目录刷新导致补齐菜单消失的问题；同一输入刷新期间，已有效的候选仍可选择。
 - 修复：Android 远程终端滑动停留在当前画面，没有传到桌面终端的问题。授权后的滚动沿用桌面的鼠标接管、备用屏与历史回滚行为，手机显示滚动后的视口。手机和桌面均需更新至本版本；手机重排阅读模式仍使用本地滚动。
 - 修复：中转部署遗漏普通 SSH 连接使用的私钥读取器。密钥口令和未加密私钥采用对应的输入规则，并可直接在中转安装页面添加密钥认证主机。
 - 修复：冷启动以及应用驻留后再次开窗时忽略指定启动目录的问题。
@@ -73,7 +75,7 @@ Installation candidate. Packages are built from one recorded source commit; publ
 | [<img src="https://avatars.githubusercontent.com/u/140129782?u=febdc34cca0b41f2d017adfbe7e59b92505bcfe6&v=4" width="48" height="48" alt="WilliamWang1721" /><br />WilliamWang1721](https://github.com/WilliamWang1721) | SSH forwarding, administrator indicators, terminal and workspace fixes ([#280](https://github.com/Kuddev/pebrel/pull/280), [#449](https://github.com/Kuddev/pebrel/pull/449), [#451](https://github.com/Kuddev/pebrel/pull/451), [#453](https://github.com/Kuddev/pebrel/pull/453), [#455](https://github.com/Kuddev/pebrel/pull/455), [#448](https://github.com/Kuddev/pebrel/pull/448), [#446](https://github.com/Kuddev/pebrel/pull/446), [#443](https://github.com/Kuddev/pebrel/pull/443)) |
 | [<img src="https://avatars.githubusercontent.com/u/40252940?v=4" width="48" height="48" alt="MomentDerek" /><br />MomentDerek](https://github.com/MomentDerek) | WSL pane launch identity and guest-directory preservation ([#351](https://github.com/Kuddev/pebrel/pull/351)) |
 | [<img src="https://avatars.githubusercontent.com/u/112920194?v=4" width="48" height="48" alt="azzliang6" /><br />azzliang6](https://github.com/azzliang6) | Configured cold-start directory ([#485](https://github.com/Kuddev/pebrel/pull/485)) |
-| [<img src="https://avatars.githubusercontent.com/u/292709043?v=4" width="48" height="48" alt="Kuddev" /><br />Kuddev](https://github.com/Kuddev) | Mobile scrolling, relay deployment, completion, theme packages and release integration ([#498](https://github.com/Kuddev/pebrel/pull/498), [#488](https://github.com/Kuddev/pebrel/pull/488), [#490](https://github.com/Kuddev/pebrel/pull/490), [#489](https://github.com/Kuddev/pebrel/pull/489), [#497](https://github.com/Kuddev/pebrel/pull/497), [#492](https://github.com/Kuddev/pebrel/pull/492), [#491](https://github.com/Kuddev/pebrel/pull/491), [#465](https://github.com/Kuddev/pebrel/pull/465), [#466](https://github.com/Kuddev/pebrel/pull/466), [#467](https://github.com/Kuddev/pebrel/pull/467), [#468](https://github.com/Kuddev/pebrel/pull/468), [#469](https://github.com/Kuddev/pebrel/pull/469), [#473](https://github.com/Kuddev/pebrel/pull/473), [#437](https://github.com/Kuddev/pebrel/pull/437), [#438](https://github.com/Kuddev/pebrel/pull/438), [#440](https://github.com/Kuddev/pebrel/pull/440), [#441](https://github.com/Kuddev/pebrel/pull/441)) |
+| [<img src="https://avatars.githubusercontent.com/u/292709043?v=4" width="48" height="48" alt="Kuddev" /><br />Kuddev](https://github.com/Kuddev) | Mobile scrolling, relay deployment, completion, theme packages and release integration ([#504](https://github.com/Kuddev/pebrel/pull/504), [#498](https://github.com/Kuddev/pebrel/pull/498), [#488](https://github.com/Kuddev/pebrel/pull/488), [#490](https://github.com/Kuddev/pebrel/pull/490), [#489](https://github.com/Kuddev/pebrel/pull/489), [#497](https://github.com/Kuddev/pebrel/pull/497), [#492](https://github.com/Kuddev/pebrel/pull/492), [#491](https://github.com/Kuddev/pebrel/pull/491), [#465](https://github.com/Kuddev/pebrel/pull/465), [#466](https://github.com/Kuddev/pebrel/pull/466), [#467](https://github.com/Kuddev/pebrel/pull/467), [#468](https://github.com/Kuddev/pebrel/pull/468), [#469](https://github.com/Kuddev/pebrel/pull/469), [#473](https://github.com/Kuddev/pebrel/pull/473), [#437](https://github.com/Kuddev/pebrel/pull/437), [#438](https://github.com/Kuddev/pebrel/pull/438), [#440](https://github.com/Kuddev/pebrel/pull/440), [#441](https://github.com/Kuddev/pebrel/pull/441)) |
 
 ---
 
