@@ -424,6 +424,13 @@ impl NebulaWorkspace {
                             .bg(color),
                     )
                 })
+                // 权限属于整个会话，先于程序身份呈现，且不被 AI 图标替换。
+                .when(local_administrator, |row| {
+                    row.child(tab_presentation::administrator_badge(
+                        format!("sidebar-admin-{ix}").into(),
+                        cx,
+                    ))
+                })
                 // 行首图标的优先级：**先身份、后形态**。AI 品牌图 / 程序字位
                 // 表达「这个 tab 里在跑什么」，它必须跟随聚焦 pane；2×2
                 // 分屏标记只在没有身份可显示时补位。
@@ -476,13 +483,6 @@ impl NebulaWorkspace {
                         )
                     },
                 )
-                .when(local_administrator, |row| {
-                    row.child(tab_presentation::administrator_badge(
-                        format!("sidebar-admin-{ix}").into(),
-                        label_px,
-                        cx,
-                    ))
-                })
                 // GPUI truncates the actual shaped title within its flex column.
                 .child(match renaming {
                     Some(input) => div()
@@ -995,7 +995,6 @@ impl NebulaWorkspace {
                 .when(local_administrator, |row| {
                     row.child(tab_presentation::administrator_badge(
                         "collapsed-title-admin".into(),
-                        label_px,
                         cx,
                     ))
                 })

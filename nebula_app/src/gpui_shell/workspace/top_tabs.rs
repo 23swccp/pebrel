@@ -365,6 +365,12 @@ impl NebulaWorkspace {
                                 .bg(color),
                         )
                     })
+                    .when(local_administrator, |row| {
+                        row.child(super::tab_presentation::administrator_badge(
+                            format!("top-tab-admin-{ix}").into(),
+                            cx,
+                        ))
+                    })
                     // 图标优先级与侧栏同源：先身份（跟随聚焦 pane），分屏标记
                     // 只在没有身份图标时补位。理由见 sidebar.rs 同处注释。
                     .when(is_settings, |row| {
@@ -421,13 +427,6 @@ impl NebulaWorkspace {
                             )
                         },
                     )
-                    .when(local_administrator, |row| {
-                        row.child(super::tab_presentation::administrator_badge(
-                            format!("top-tab-admin-{ix}").into(),
-                            label_px,
-                            cx,
-                        ))
-                    })
                     .child(match renaming {
                         Some(input) => div()
                             .flex_1()

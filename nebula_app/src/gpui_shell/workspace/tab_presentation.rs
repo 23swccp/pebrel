@@ -159,11 +159,7 @@ pub(super) fn tooltip(text: SharedString, window: &mut Window, cx: &mut App) -> 
     .build(window, cx)
 }
 
-pub(super) fn administrator_badge(
-    selector: SharedString,
-    label_px: f32,
-    cx: &App,
-) -> gpui::Stateful<gpui::Div> {
+pub(super) fn administrator_badge(selector: SharedString, cx: &App) -> gpui::Stateful<gpui::Div> {
     let label = crate::gpui_shell::config::ui_language(cx)
         .text(crate::i18n::Message::ChromeLocalAdministrator);
     div()
@@ -172,20 +168,24 @@ pub(super) fn administrator_badge(
         .role(gpui::accesskit::Role::Image)
         .aria_label(label)
         .flex_shrink_0()
-        .w(px(label_px.max(TAB_LABEL_ICON_W)))
+        .size(px(TAB_LABEL_ICON_SIZE))
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(label_px))
-        .text_color(cx.theme().warning)
-        .child("🛡")
+        // 权限提示与任务图标同尺寸；矢量图避免 emoji 字体改变颜色和几何。
+        .child(
+            Icon::new(Icon::empty())
+                .path(crate::gpui_shell::assets::nav::SHIELD)
+                .size(px(TAB_LABEL_ICON_SIZE))
+                .text_color(cx.theme().warning),
+        )
         .tooltip(move |window, cx| tooltip(label.into(), window, cx))
 }
 
 #[cfg(all(test, feature = "gpui-test-support"))]
 mod tests {
     use super::*;
-    use gpui::TestAppContext;
+    use gpui::{AssetSource as _, TestAppContext};
     use gpui_component::Root;
 
     struct BadgeSurface;
@@ -195,13 +195,25 @@ mod tests {
             h_flex()
                 .h(px(36.0))
                 .items_center()
-                .child(administrator_badge("test-administrator".into(), 15.0, cx))
+                .child(administrator_badge("test-administrator".into(), cx))
+                .child(
+                    div()
+                        .debug_selector(|| "test-task-icon".into())
+                        .size(px(TAB_LABEL_ICON_SIZE))
+                        .flex_shrink_0()
+                        .child(Icon::new(IconName::SquareTerminal).size(px(TAB_LABEL_ICON_SIZE))),
+                )
                 .child(div().debug_selector(|| "test-admin-title".into()).child("pwsh"))
         }
     }
 
     #[gpui::test]
     fn administrator_badge_keeps_a_readable_slot_with_reduced_motion(cx: &mut TestAppContext) {
+        let asset = crate::gpui_shell::assets::NebulaAssets
+            .load(crate::gpui_shell::assets::nav::SHIELD)
+            .unwrap()
+            .expect("administrator shield must be embedded in the product");
+        assert!(std::str::from_utf8(&asset).unwrap().contains("viewBox=\"0 0 24 24\""));
         cx.update(|cx| {
             gpui_component::init(cx);
             cx.set_global(crate::gpui_shell::config::Settings::load(
@@ -220,10 +232,12 @@ mod tests {
                 window.draw(cx).clear(cx);
             });
             let badge = window.debug_bounds("test-administrator").unwrap();
+            let task = window.debug_bounds("test-task-icon").unwrap();
             let title = window.debug_bounds("test-admin-title").unwrap();
-            assert!(badge.size.width >= px(15.0));
-            assert!(badge.size.height > px(0.0));
-            assert!(badge.right() <= title.left());
+            assert_eq!(badge.size, gpui::size(px(TAB_LABEL_ICON_SIZE), px(TAB_LABEL_ICON_SIZE)));
+            assert_eq!(badge.size, task.size);
+            assert!(badge.right() <= task.left());
+            assert!(task.right() <= title.left());
             if let Some(previous) = previous {
                 assert_eq!(badge, previous);
             }
