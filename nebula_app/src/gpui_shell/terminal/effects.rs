@@ -410,3 +410,12 @@ pub(super) fn paint(
         this.reconcile(cx);
     });
 }
+
+pub(super) fn visibility_changed(view: &TerminalView, cx: &mut Context<TerminalView>) {
+    if let Some(effect) = view.effect.clone() {
+        // 可见性由工作区裁定；延后读取 view，避免在其更新期间重入借用。
+        cx.defer(move |cx| {
+            effect.update(cx, |effect, cx| effect.visibility_changed(cx));
+        });
+    }
+}

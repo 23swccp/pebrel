@@ -265,7 +265,7 @@ impl TerminalView {
             session,
             focus_handle,
             math: super::super::math_overlay::MathOverlay::default(),
-            #[cfg(all(windows, feature = "shader-background"))]
+
             effect: None,
             answers: crate::assistant_answer::AnswerInbox::default(),
             answer_reader: None,
