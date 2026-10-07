@@ -125,6 +125,10 @@ impl SettingsPane {
     ) -> gpui::Div {
         self.mobile_initialize(window, cx);
         self.mobile_sync_port_placeholder(window, cx);
+        // GPUI 焦点通知在 draw 末尾派发；首帧直接读取焦点事实，避免底线晚一帧展开。
+        self.mobile
+            .port_focus
+            .set_focused(self.mobile.port_input.read(cx).focus_handle(cx).is_focused(window));
         let language = crate::gpui_shell::config::ui_language(cx);
         let phase = self.mobile.phase();
         // 原型的 812 包含两侧 56px 留白；窄窗收紧页边，不缩小二维码或按钮。
