@@ -28,10 +28,13 @@ class TerminalSnapshotView(context: Context) : View(context) {
     private var flingY = 0
     private var gestureX = 0f
     private var gestureY = 0f
+    var onHistoryPage: ((Long?) -> Unit)? = null
+    private var requestedHistoryStart: Long? = null
     private val scrollbar = TerminalScrollbar(this) { fraction ->
         followInputCursor = false
         offsetY = maxY() * fraction
-        followOutput = fraction >= .999f
+        followOutput = fraction >= .999f && atHistoryTail()
+        requestHistoryNearEdge()
         invalidate()
     }
     private var composingText = ""
@@ -108,12 +111,20 @@ class TerminalSnapshotView(context: Context) : View(context) {
         set(value) {
             if (field === value) return
             val follow = field == null || followOutput
+            val previous = renderedFrame
             field = value
             // 选择固定在用户看到的投影帧上；退出选择后才恢复到最新输出。
             if (selection.active && value != null) { invalidate(); return }
             if (value == null) { stopScrolling(); selection.clear() }
             metrics()
             reproject()
+            val oldHistory = previous?.history
+            val history = renderedFrame?.history
+            if (!wrapLines && !follow && oldHistory != null && history != null &&
+                !oldHistory.applicationScroll && !history.applicationScroll && previous.columns == value?.columns) {
+                // 同一绝对行在新页里换了下标，补偿偏移而不是跳回页首或光标。
+                offsetY += (oldHistory.first - history.first).toFloat() * cellHeight
+            }
             // 桌面网格包含光标下方的空白；从网格底部回跳会把真实输出顶出屏幕。
             // 首帧从顶部开始，只在当前视口装不下光标时滚动，不修改任何终端行。
             if (follow && value?.cursorVisible != true) offsetY = maxY()
@@ -170,6 +181,37 @@ class TerminalSnapshotView(context: Context) : View(context) {
     private fun constrainOffsets() {
         offsetX = offsetX.coerceIn(0f, max(0f, ((selection.frame ?: renderedFrame)?.columns ?: 0) * cellWidth - width))
         offsetY = offsetY.coerceIn(0f, maxY())
+    }
+
+    private fun atHistoryTail(): Boolean {
+        val history = frame?.history ?: return true
+        return history.applicationScroll || history.first + (frame?.rows?.size ?: 0) >= history.end
+    }
+
+    private fun requestHistory(start: Long?) {
+        if (requestedHistoryStart == start) return
+        requestedHistoryStart = start
+        onHistoryPage?.invoke(start)
+    }
+
+    private fun requestHistoryNearEdge() {
+        val source = frame ?: return
+        val history = source.history ?: return
+        if (history.applicationScroll || wrapLines || onHistoryPage == null) return
+        val visibleRows = (height / cellHeight).coerceAtLeast(1f)
+        val firstVisible = (offsetY / cellHeight).toLong()
+        val reserve = (source.rows.size - visibleRows).coerceAtLeast(0f)
+        val margin = minOf(visibleRows, reserve / 3).coerceAtLeast(1f)
+        if (followOutput && atHistoryTail()) { requestHistory(null); return }
+        val nearTop = firstVisible < margin && history.first > history.oldest
+        val nearBottom = firstVisible + visibleRows > source.rows.size - margin && !atHistoryTail()
+        if (nearTop || nearBottom) {
+            val start = (history.first + firstVisible - (reserve / 2).toLong()).coerceAtLeast(history.oldest)
+            requestHistory(start)
+        } else if (requestedHistoryStart == null) {
+            // 阅读已离开底部，固定当前页；新输出不应把整份历史窗口持续向后挪。
+            requestHistory(history.first)
+        }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -281,12 +323,13 @@ class TerminalSnapshotView(context: Context) : View(context) {
         offsetX += dx
         offsetY += dy
         constrainOffsets()
-        followOutput = maxY() - offsetY < cellHeight * 2
+        followOutput = maxY() - offsetY < cellHeight * 2 && atHistoryTail()
         var consumed = offsetX != previousX || offsetY != previousY
         val target = scrollTarget
         val source = frame
         // 先移动已在手机上的网格；本地边缘以外仍遵守原有远端滚轮及权限边界。
-        if (!wrapLines && source != null && source.rows.isNotEmpty() && source.columns > 0 &&
+        if (!wrapLines && source != null && source.history?.applicationScroll != false &&
+            source.rows.isNotEmpty() && source.columns > 0 &&
             target?.supportsScroll == true) {
             val remaining = dy - (offsetY - previousY)
             scrollRemainder = (scrollRemainder - remaining / cellHeight).coerceIn(-32f, 32f)
@@ -301,6 +344,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
                 } else scrollRemainder = 0f
             } else if (remaining != 0f) consumed = true
         }
+        if (source?.history?.applicationScroll == false) requestHistoryNearEdge()
         invalidate()
         return consumed
     }
@@ -394,6 +438,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     fun showKeyboard() {
         if (inputTarget == null) return
         stopScrolling()
+        if (frame?.history?.applicationScroll == false) { followOutput = true; requestHistory(null) }
         followInputCursor = true
         revealCursor(true)
         constrainOffsets()
@@ -423,6 +468,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
         selection.clear()
         inputGeneration++
         composingText = ""
+        onHistoryPage = null
         super.onDetachedFromWindow()
     }
 
@@ -445,6 +491,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
         val target = inputTarget ?: return false
         if (KeyEvent.isModifierKey(code) || code in setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN)) return false
         stopScrolling()
+        if (frame?.history?.applicationScroll == false) { followOutput = true; requestHistory(null) }
         val mods = (if (event.isShiftPressed) 1 else 0) or (if (event.isCtrlPressed) 2 else 0) or
             (if (event.isAltPressed) 4 else 0) or (if (event.isMetaPressed) 8 else 0)
         val point = event.getUnicodeChar(event.metaState and KeyEvent.META_CTRL_MASK.inv())
