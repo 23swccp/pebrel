@@ -730,7 +730,7 @@ impl SettingsPane {
                                 .id("mobile-port-row")
                                 .debug_selector(|| "mobile-port-row".into())
                                 .relative()
-                                .w(px(64.0))
+                                .w(px((f32::from(cx.theme().font_size) * 4.0).max(64.0)))
                                 .h(settings_control_height(cx))
                                 .flex_shrink_0()
                                 .child(gpui::Styled::h(
@@ -739,6 +739,7 @@ impl SettingsPane {
                                         .focus_bordered(false)
                                         .aria_label(language.text(Message::MobilePort))
                                         .w_full()
+                                        .px(px(4.0))
                                         .disabled(busy),
                                     settings_control_height(cx),
                                 ))
