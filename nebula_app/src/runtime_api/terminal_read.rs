@@ -93,17 +93,27 @@ pub(crate) fn capture_terminal_history<T: EventListener>(
     let end = live_start + term.screen_lines() as u64;
     let application_scroll = term.mode().intersects(TermMode::ALT_SCREEN | TermMode::MOUSE_MODE);
     // 程序接管滚轮时仍返回实时网格；普通历史则由手机自己的绝对行锚点读取。
-    let rows = if application_scroll { term.screen_lines() } else {
+    let rows = if application_scroll {
+        term.screen_lines()
+    } else {
         requested_rows.min(40_000 / columns).min(term.total_lines())
     };
-    let first = if application_scroll { live_start } else {
-        start.unwrap_or(end.saturating_sub(rows as u64))
+    let first = if application_scroll {
+        live_start
+    } else {
+        start
+            .unwrap_or(end.saturating_sub(rows as u64))
             .clamp(oldest, end.saturating_sub(rows as u64).max(oldest))
     };
     let first_line = (first as i64 - live_start as i64) as i32;
     let mut screen = capture_terminal_grid(term, palette_color, first_line, rows)?;
     screen.history = Some(RuntimeScreenHistory {
-        first, oldest, end, live_start, live_rows: term.screen_lines(), application_scroll,
+        first,
+        oldest,
+        end,
+        live_start,
+        live_rows: term.screen_lines(),
+        application_scroll,
     });
     Ok(screen)
 }
@@ -297,6 +307,85 @@ mod tests {
             term.colors()[index].unwrap_or(Rgb { r: 1, g: 2, b: 3 })
         })
         .unwrap()
+    }
+
+    #[test]
+    fn independent_history_pages_preserve_desktop_viewport_and_survive_eviction() {
+        let mut term = terminal(12, 2, "first\r\nsecond\r\nthird\r\nfourth");
+        term.scroll_display(Scroll::Top);
+        let offset = term.grid().display_offset();
+        let page =
+            capture_terminal_history(&term, |_| Rgb { r: 0, g: 0, b: 0 }, Some(1), 2).unwrap();
+        assert_eq!(page.rows[0][0].0, "s");
+        assert_eq!(page.history.as_ref().unwrap().first, 1);
+        assert_eq!(term.grid().display_offset(), offset);
+        assert_eq!(page.cursor.2, 0);
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, b"\r\nfifth");
+        let appended =
+            capture_terminal_history(&term, |_| Rgb { r: 0, g: 0, b: 0 }, Some(1), 2).unwrap();
+        assert_eq!(page.rows, appended.rows);
+        term.grid_mut().update_history(1);
+        let evicted =
+            capture_terminal_history(&term, |_| Rgb { r: 0, g: 0, b: 0 }, Some(0), 200).unwrap();
+        let history = evicted.history.unwrap();
+        assert_eq!(history.first, history.oldest);
+        assert_eq!(history.end - history.first, evicted.rows.len() as u64);
+        assert!(history.oldest > 0);
+    }
+
+    #[test]
+    fn history_tail_uses_cell_budget_and_application_scroll_uses_live_grid() {
+        let text = (0..205).map(|_| "row\r\n").collect::<String>();
+        let term = terminal(400, 2, &text);
+        let page =
+            capture_terminal_history(&term, |_| Rgb { r: 0, g: 0, b: 0 }, None, 200).unwrap();
+        assert_eq!(page.rows.len(), 100);
+        let history = page.history.unwrap();
+        assert_eq!(history.first + 100, history.end);
+        for mode in ["\x1b[?1049h", "\x1b[?1000h"] {
+            let term = terminal(12, 2, &format!("old\r\nnew\r\n{mode}live"));
+            let page = capture_terminal_history(&term, |_| Rgb { r: 0, g: 0, b: 0 }, Some(0), 200)
+                .unwrap();
+            let history = page.history.unwrap();
+            assert!(history.application_scroll);
+            assert_eq!(history.first, history.live_start);
+            assert_eq!(page.rows, capture(&term).rows);
+        }
+    }
+
+    #[test]
+    fn history_request_rejects_conflicting_modes_and_unbounded_coordinates() {
+        use crate::runtime_api::{ApiRequest, RuntimeCommand};
+        for params in [
+            serde_json::json!({"pane_id":2,"screen_history":{"rows":1}}),
+            serde_json::json!({"pane_id":2,"screen":true,"screen_viewport":true,"screen_history":{"rows":1}}),
+            serde_json::json!({"pane_id":2,"screen":true,"screen_history":{"rows":0}}),
+            serde_json::json!({"pane_id":2,"screen":true,"screen_history":{"rows":201}}),
+            serde_json::json!({"pane_id":2,"screen":true,"screen_history":{"rows":1,"start":-1}}),
+            serde_json::json!({"pane_id":2,"screen":true,"screen_history":{"rows":1,"start":9_007_199_254_740_992_u64}}),
+        ] {
+            assert!(
+                RuntimeCommand::from_request(&ApiRequest::new(
+                    "fixture".into(),
+                    "pane.read",
+                    params
+                ))
+                .is_err()
+            );
+        }
+        let valid = ApiRequest::new(
+            "fixture".into(),
+            "pane.read",
+            serde_json::json!({"pane_id":2,"screen":true,"screen_history":{"rows":200,"start":12}}),
+        );
+        assert!(matches!(
+            RuntimeCommand::from_request(&valid).unwrap(),
+            RuntimeCommand::ReadPane {
+                screen: Some(ScreenMode::History { start: Some(12), rows: 200 }),
+                ..
+            }
+        ));
     }
 
     #[test]

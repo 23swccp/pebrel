@@ -677,7 +677,11 @@ class SessionRepository(private val context: Context,
                 currentCoroutineContext().ensureActive()
                 if (generation != readGeneration || desktopClients[id] !== client) throw CancellationException()
                 // 新的阅读页请求已经取代旧请求，旧回包不得把手机拉回之前的页。
-                if (pageRevision != desktopHistoryRevision) return@run false
+                if (pageRevision != desktopHistoryRevision) {
+                    // 丢弃的回包已经推进解码基线；下一页须重建，不能复用仍在显示的旧帧。
+                    client.resetScreen()
+                    return@run false
+                }
                 val next = result.getOrNull() ?: previous.copy(loading = false)
                 output.value = next
                 if (result.isFailure) {

@@ -284,7 +284,8 @@ impl BridgeSession {
         let endpoint =
             read_endpoint().ok_or_else(|| io::Error::other("no resident Pebrel runtime"))?;
         let stopped = Arc::new(AtomicBool::new(false));
-        let (screen_stream, screen_grid, terminal_scroll, terminal_history) = screen_capabilities(&endpoint);
+        let (screen_stream, screen_grid, terminal_scroll, terminal_history) =
+            screen_capabilities(&endpoint);
         write_frame(
             &output,
             &json!({

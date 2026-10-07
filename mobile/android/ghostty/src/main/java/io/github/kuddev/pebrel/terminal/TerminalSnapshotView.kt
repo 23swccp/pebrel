@@ -30,6 +30,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     private var gestureY = 0f
     var onHistoryPage: ((Long?) -> Unit)? = null
     private var requestedHistoryStart: Long? = null
+    private var historyRequestSent = false
     private val scrollbar = TerminalScrollbar(this) { fraction ->
         followInputCursor = false
         offsetY = maxY() * fraction
@@ -112,18 +113,34 @@ class TerminalSnapshotView(context: Context) : View(context) {
             if (field === value) return
             val follow = field == null || followOutput
             val previous = renderedFrame
+            val previousSourceColumns = field?.columns
             field = value
             // 选择固定在用户看到的投影帧上；退出选择后才恢复到最新输出。
             if (selection.active && value != null) { invalidate(); return }
-            if (value == null) { stopScrolling(); selection.clear() }
+            if (value == null) {
+                stopScrolling()
+                selection.clear()
+                requestedHistoryStart = null
+                historyRequestSent = false
+                followOutput = true
+            }
             metrics()
             reproject()
             val oldHistory = previous?.history
             val history = renderedFrame?.history
-            if (!wrapLines && !follow && oldHistory != null && history != null &&
-                !oldHistory.applicationScroll && !history.applicationScroll && previous.columns == value?.columns) {
-                // 同一绝对行在新页里换了下标，补偿偏移而不是跳回页首或光标。
-                offsetY += (oldHistory.first - history.first).toFloat() * cellHeight
+            if (!follow && oldHistory != null && history != null &&
+                !oldHistory.applicationScroll && !history.applicationScroll &&
+                previousSourceColumns == value?.columns) {
+                // 用原网格坐标保住阅读锚点，手机换行后不能把投影行当成桌面行。
+                val oldRow = (offsetY / cellHeight).toInt().coerceIn(0, previous.rows.lastIndex)
+                val columns = value!!.columns
+                val anchor = oldHistory.first * columns +
+                    (previous.sourceOffsets?.get(oldRow) ?: (oldRow * columns))
+                val current = renderedFrame!!
+                val relative = anchor - history.first * columns
+                val row = current.sourceOffsets?.indexOfLast { it.toLong() <= relative }
+                    ?: (relative / columns).toInt()
+                offsetY = row.coerceAtLeast(0) * cellHeight + offsetY % cellHeight
             }
             // 桌面网格包含光标下方的空白；从网格底部回跳会把真实输出顶出屏幕。
             // 首帧从顶部开始，只在当前视口装不下光标时滚动，不修改任何终端行。
@@ -189,7 +206,8 @@ class TerminalSnapshotView(context: Context) : View(context) {
     }
 
     private fun requestHistory(start: Long?) {
-        if (requestedHistoryStart == start) return
+        if (historyRequestSent && requestedHistoryStart == start) return
+        historyRequestSent = true
         requestedHistoryStart = start
         onHistoryPage?.invoke(start)
     }
@@ -197,14 +215,18 @@ class TerminalSnapshotView(context: Context) : View(context) {
     private fun requestHistoryNearEdge() {
         val source = frame ?: return
         val history = source.history ?: return
-        if (history.applicationScroll || wrapLines || onHistoryPage == null) return
-        val visibleRows = (height / cellHeight).coerceAtLeast(1f)
-        val firstVisible = (offsetY / cellHeight).toLong()
-        val reserve = (source.rows.size - visibleRows).coerceAtLeast(0f)
-        val margin = minOf(visibleRows, reserve / 3).coerceAtLeast(1f)
+        if (history.applicationScroll || onHistoryPage == null) return
+        val rendered = renderedFrame ?: return
+        fun sourceRow(visual: Int): Long = (rendered.sourceOffsets?.getOrNull(
+            visual.coerceIn(0, rendered.rows.lastIndex))?.div(source.columns) ?: visual).toLong()
+        val firstVisible = sourceRow((offsetY / cellHeight).toInt())
+        val lastVisible = sourceRow(((offsetY + height) / cellHeight).toInt())
+        val visibleSourceRows = (lastVisible - firstVisible + 1).toFloat()
+        val reserve = (source.rows.size - visibleSourceRows).coerceAtLeast(0f)
+        val margin = minOf(visibleSourceRows, reserve / 3).coerceAtLeast(1f)
         if (followOutput && atHistoryTail()) { requestHistory(null); return }
         val nearTop = firstVisible < margin && history.first > history.oldest
-        val nearBottom = firstVisible + visibleRows > source.rows.size - margin && !atHistoryTail()
+        val nearBottom = lastVisible >= source.rows.size - margin && !atHistoryTail()
         if (nearTop || nearBottom) {
             val start = (history.first + firstVisible - (reserve / 2).toLong()).coerceAtLeast(history.oldest)
             requestHistory(start)
@@ -344,7 +366,12 @@ class TerminalSnapshotView(context: Context) : View(context) {
                 } else scrollRemainder = 0f
             } else if (remaining != 0f) consumed = true
         }
-        if (source?.history?.applicationScroll == false) requestHistoryNearEdge()
+        if (source?.history?.applicationScroll == false) {
+            requestHistoryNearEdge()
+            // 翻页在途时继续消耗惯性时间；只有到达完整历史边界才结束，而非停在网络页边界。
+            if (onHistoryPage != null &&
+                (dy < 0 && source.history.first > source.history.oldest || dy > 0 && !atHistoryTail())) consumed = true
+        }
         invalidate()
         return consumed
     }
@@ -457,6 +484,8 @@ class TerminalSnapshotView(context: Context) : View(context) {
         info.initialSelEnd = 0
         return TerminalInputConnection(this, target, { inputTarget === target && inputGeneration == generation }, {
             composingText = it
+            stopScrolling()
+            if (frame?.history?.applicationScroll == false) { followOutput = true; requestHistory(null) }
             followInputCursor = true
         })
     }

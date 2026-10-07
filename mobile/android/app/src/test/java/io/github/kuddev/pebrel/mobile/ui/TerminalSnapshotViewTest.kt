@@ -17,6 +17,7 @@ import io.github.kuddev.pebrel.mobile.connection.decodeDesktopScreen
 import io.github.kuddev.pebrel.terminal.GhosttyView
 import io.github.kuddev.pebrel.terminal.SessionTransport
 import io.github.kuddev.pebrel.terminal.TerminalCallbacks
+import io.github.kuddev.pebrel.terminal.TerminalHistory
 import io.github.kuddev.pebrel.terminal.TerminalFrame
 import io.github.kuddev.pebrel.terminal.TerminalRow
 import io.github.kuddev.pebrel.terminal.TerminalSession
@@ -38,6 +39,75 @@ import java.io.File
 @Config(sdk = [28])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TerminalSnapshotViewTest {
+    @Test fun pagingKeepsTheSamePhysicalCellVisibleWithAndWithoutPhoneReflow() {
+        for (wrapped in listOf(false, true)) {
+            val view = view(*Array(200) { row("abcd") }, width = 39, height = 160)
+            view.wrapLines = wrapped
+            fun page(first: Long) = TerminalFrame(Array(200) { row("abcd") },
+                intArrayOf(4, 200, 0, 0, 0, background, red, 2),
+                history = TerminalHistory(first, 0, 500, 480, 20, false))
+            view.frame = page(100)
+            val y = TerminalSnapshotView::class.java.getDeclaredField("offsetY").apply { isAccessible = true }
+            val height = TerminalSnapshotView::class.java.getDeclaredField("cellHeight").apply { isAccessible = true }.getFloat(view)
+            TerminalSnapshotView::class.java.getDeclaredField("followOutput").apply { isAccessible = true }.setBoolean(view, false)
+            val rowsPerSource = projected(view).rows.size / 200
+            val before = 5.25f * height
+            y.setFloat(view, before)
+            view.frame = page(50)
+            assertEquals("page replacement preserves physical cell and sub-row pixels, wrap=$wrapped",
+                before + 50 * rowsPerSource * height, y.getFloat(view), .01f)
+            val requests = mutableListOf<Long?>()
+            view.onHistoryPage = { requests += it }
+            view.scrollTarget = object : TerminalInputTarget {
+                override val supportsScroll = true
+                override fun scroll(lines: Int, column: Int, row: Int): Boolean = error("history reading must not move the PC")
+                override fun text(text: String): Boolean = error("history reading must not type")
+                override fun key(code: Int, modifiers: Int, action: Int, text: String, unshifted: Int): Boolean = error("history reading must not send keys")
+            }
+            val down = eventTime
+            touch(view, down, MotionEvent.ACTION_DOWN, 10f to 20f)
+            touch(view, down, MotionEvent.ACTION_MOVE, 10f to 20000f)
+            touch(view, down, MotionEvent.ACTION_CANCEL, 10f to 20000f)
+            assertTrue("read-only swipe requests the preceding page, wrap=$wrapped", requests.any { it != null && it < 50 })
+            assertNull(view.inputTarget)
+        }
+    }
+
+    @Test fun flingSurvivesAnInFlightHistoryPageAndKeyboardRequestsTheLiveTail() {
+        val view = view(*Array(200) { row("abcd") }, height = 160)
+        fun page(first: Long) = TerminalFrame(Array(200) { row("abcd") },
+            intArrayOf(4, 200, 0, 0, 0, background, red, 2),
+            history = TerminalHistory(first, 0, 500, 480, 20, false))
+        view.frame = page(100)
+        val requests = mutableListOf<Long?>()
+        view.onHistoryPage = { requests += it }
+        val y = TerminalSnapshotView::class.java.getDeclaredField("offsetY").apply { isAccessible = true }
+        y.setFloat(view, 0f)
+        eventTime = android.os.SystemClock.uptimeMillis()
+        val down = eventTime
+        touch(view, down, MotionEvent.ACTION_DOWN, 20f to 20f)
+        touch(view, down, MotionEvent.ACTION_MOVE, 20f to 70f)
+        touch(view, down, MotionEvent.ACTION_MOVE, 20f to 130f)
+        touch(view, down, MotionEvent.ACTION_UP, 20f to 150f)
+        repeat(3) {
+            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16))
+            view.computeScroll()
+        }
+        view.frame = page(50)
+        val received = y.getFloat(view)
+        repeat(3) {
+            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16))
+            view.computeScroll()
+        }
+        assertTrue("page arrival must not require a second swipe", y.getFloat(view) < received)
+        view.inputTarget = object : TerminalInputTarget {
+            override fun text(text: String) = true
+            override fun key(code: Int, modifiers: Int, action: Int, text: String, unshifted: Int) = true
+        }
+        view.showKeyboard()
+        assertNull("typing returns to the live tail", requests.last())
+    }
+
     @Test fun localHistoryKeepsMovingAfterReleaseAndStopsAtTheNextTouch() {
         val view = view(*Array(80) { row("abcd") }, height = 160)
         val original = view.frame
