@@ -1,8 +1,40 @@
 //! Saved launch identities may retain a previous build's temporary bootstrap path.
 
+use std::fmt::Write as _;
 use std::path::{Component, Path, PathBuf, Prefix};
+use std::sync::OnceLock;
+
+use sha2::{Digest, Sha256};
 
 use crate::tty::Shell;
+
+const SCRIPT_DIRECTORY: &str = "pebrel-shell";
+
+fn generation(version: &str, source: &[u8]) -> String {
+    let mut name = String::with_capacity(version.len() + 65);
+    name.push_str(version);
+    name.push('-');
+    for byte in Sha256::digest(source).iter() {
+        write!(&mut name, "{byte:02x}").unwrap();
+    }
+    name
+}
+
+pub(super) fn versioned_path(base: &Path) -> PathBuf {
+    // 同版本测试构建也可能修改脚本；指纹只计算一次，不随每次开标签重复散列。
+    static GENERATION: OnceLock<String> = OnceLock::new();
+    let generation = GENERATION
+        .get_or_init(|| generation(env!("CARGO_PKG_VERSION"), super::NEBULA_PROMPT_PS1.as_bytes()));
+    base.join(SCRIPT_DIRECTORY).join(generation).join("pebrel_prompt.ps1")
+}
+
+fn versioned_generation(name: &str) -> bool {
+    let Some((version, digest)) = name.rsplit_once('-') else { return false };
+    version.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        && version.bytes().all(|byte| byte.is_ascii_alphanumeric() || b".-+".contains(&byte))
+        && digest.len() == 64
+        && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
 
 pub(super) fn refresh(shell: &Shell) -> Option<Shell> {
     let script = prepared_script(shell)?;
@@ -56,7 +88,20 @@ fn prepared_script(shell: &Shell) -> Option<PathBuf> {
 }
 
 fn original_args(shell: &Shell, script: &Path, directories: &[PathBuf]) -> Option<Vec<String>> {
-    let parent = script.parent()?.canonicalize().ok()?;
+    let mut parent = script.parent()?;
+    if parent
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case(SCRIPT_DIRECTORY))
+    {
+        if !versioned_generation(parent.file_name()?.to_str()?) {
+            return None;
+        }
+        // 旧版本目录可以已经被清理，只核实它所属的托管根，不要求旧脚本仍存在。
+        parent = parent.parent()?.parent()?;
+    }
+    let parent = parent.canonicalize().ok()?;
     let owned = directories.iter().any(|directory| {
         directory.is_absolute()
             && directory.canonicalize().is_ok_and(|directory| directory == parent)
@@ -147,5 +192,53 @@ mod tests {
         let mut args = shell.args().to_vec();
         args.insert(0, "-File".into());
         assert!(prepared_script(&Shell::new("powershell.exe".into(), args)).is_none());
+    }
+
+    #[test]
+    fn script_generations_change_with_version_or_contents_but_are_stable_otherwise() {
+        let first = generation("2.1.2", b"current script");
+        assert_eq!(first, generation("2.1.2", b"current script"));
+        assert_ne!(first, generation("2.1.3", b"current script"));
+        assert_ne!(first, generation("2.1.2", b"next candidate"));
+        assert!(versioned_generation(&first));
+        assert!(!versioned_generation("custom-script"));
+        assert!(!versioned_generation("2.1.2-abcdef"));
+    }
+
+    #[test]
+    fn a_missing_old_generation_is_refreshed_without_accepting_arbitrary_subdirectories() {
+        let directories = Directories::new();
+        let root = directories.0.join("old");
+        let old = root.join(SCRIPT_DIRECTORY).join(generation("2.1.0", b"old script"));
+        let shell = prepared("powershell.exe", &old);
+        let script = prepared_script(&shell).unwrap();
+        assert!(!script.exists());
+        assert_eq!(
+            original_args(&shell, &script, &[root.clone()]).unwrap(),
+            ["-NoLogo", "-NoProfile"]
+        );
+        let unrelated = prepared("powershell.exe", &root.join(SCRIPT_DIRECTORY).join("custom"));
+        let script = prepared_script(&unrelated).unwrap();
+        assert!(original_args(&unrelated, &script, &[root]).is_none());
+    }
+
+    #[test]
+    fn restored_command_line_loads_current_generated_script_and_leaves_flat_file_unchanged() {
+        let old = std::env::temp_dir().join("pebrel_prompt.ps1");
+        let before = std::fs::read(&old).ok();
+        let shell = prepared("powershell.exe", old.parent().unwrap());
+        let mut options = crate::tty::Options::default();
+        options.shell = Some(shell.clone());
+        let command = super::super::cmdline(&options);
+        let current = super::super::nebula_prompt_script_path().unwrap();
+        assert!(command.contains(SCRIPT_DIRECTORY));
+        assert!(command.contains(env!("CARGO_PKG_VERSION")));
+        assert!(!command.contains(&format!(". '{}'", old.display())));
+        assert_eq!(std::fs::read(&old).ok(), before);
+        let bytes = std::fs::read(&current).unwrap();
+        assert_eq!(&bytes[..3], &[0xef, 0xbb, 0xbf]);
+        assert_eq!(&bytes[3..], super::super::NEBULA_PROMPT_PS1.as_bytes());
+        assert!(String::from_utf8_lossy(&bytes).contains("pebrel_editor_ready"));
+        assert_eq!(options.shell.as_ref().unwrap().args(), shell.args());
     }
 }

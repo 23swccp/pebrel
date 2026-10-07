@@ -31,6 +31,13 @@ known managed directories. Resolve directory aliases before comparison. Generate
 the current integration and replace the launch suffix, preserving executable and
 original flags. Do not overwrite the location from the saved session.
 
+Store the generated PowerShell script below `pebrel-shell/<version>-<sha256>/`.
+The version is the terminal crate version; SHA-256 covers the embedded UTF-8
+script source. Equal-version test builds with different scripts therefore do
+not overwrite each other's file. Cache this generation once per process, not
+per tab or frame. Existing flat references and previous generated directories
+are both recognized; an old generation need not still exist to refresh it.
+
 Default-shell preparation is lazy when an explicit shell is present, avoiding an
 unused bootstrap write. Custom commands, other shells, arbitrary same-named files
 and UNC references retain their existing arguments.
@@ -41,10 +48,14 @@ and UNC references retain their existing arguments.
 - Write current contents to the saved path: gives persisted data write authority.
 - Replace the whole launch with the current default shell: loses explicit identity.
 - Restart or source code into running user shells without a separate action: exceeds launch repair.
+- Use only the version number: different test builds may share that version.
+- Delete prior generation files during launch: another process may still reference them.
 
 ## Consequences
 
-No new dependency, thread or persisted format. Work occurs at process launch,
+Reuse the workspace's existing `sha2` implementation as a Windows-only dependency
+instead of inventing a digest or relying on an unstable standard-library hash.
+No new thread or persisted format. Work occurs at process launch,
 not during input or rendering. Already-running shells retain their loaded code;
 changing a script file does not retroactively update their functions.
 

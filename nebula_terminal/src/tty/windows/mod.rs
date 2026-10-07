@@ -848,7 +848,9 @@ fn integration_script_path(name: &str) -> std::path::PathBuf {
 
 /// Write the Nebula prompt script to a temp file, returning its path.
 fn nebula_prompt_script_path() -> Option<std::path::PathBuf> {
-    let path = integration_script_path("pebrel_prompt.ps1");
+    let legacy = integration_script_path("pebrel_prompt.ps1");
+    let path = powershell_launch::versioned_path(legacy.parent()?);
+    std::fs::create_dir_all(path.parent()?).ok()?;
     // NOTE: do NOT touch the theme bridge file here. The UI process owns it
     // (written with the restored/selected theme); stamping a default from the
     // spawn path used to reset the powerline palette on every new tab.
