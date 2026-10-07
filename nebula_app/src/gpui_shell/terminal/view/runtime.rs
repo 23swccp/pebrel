@@ -402,12 +402,15 @@ impl TerminalView {
         if let Some(screen) = screen {
             let palette = |index| self.palette.query_reply(index, term.colors());
             let capture = match screen {
-                crate::runtime_api::ScreenMode::History { start, rows } =>
-                    crate::runtime_api::capture_terminal_history(&term, palette, start, rows),
-                crate::runtime_api::ScreenMode::Viewport =>
-                    crate::runtime_api::capture_terminal_viewport(&term, palette),
-                crate::runtime_api::ScreenMode::Live =>
-                    crate::runtime_api::capture_terminal_screen(&term, palette),
+                crate::runtime_api::ScreenMode::History { start, rows } => {
+                    crate::runtime_api::capture_terminal_history(&term, palette, start, rows)
+                },
+                crate::runtime_api::ScreenMode::Viewport => {
+                    crate::runtime_api::capture_terminal_viewport(&term, palette)
+                },
+                crate::runtime_api::ScreenMode::Live => {
+                    crate::runtime_api::capture_terminal_screen(&term, palette)
+                },
             };
             read.screen = Some(capture?);
         }

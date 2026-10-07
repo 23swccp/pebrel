@@ -9,7 +9,8 @@ data class TerminalHistory(val first: Long, val oldest: Long, val end: Long, val
                            val liveRows: Int, val applicationScroll: Boolean)
 
 class TerminalFrame(val rows: Array<TerminalRow?>, val meta: IntArray, val wrapped: BooleanArray? = null,
-                    val history: TerminalHistory? = null) {
+                    val history: TerminalHistory? = null,
+                    internal val sourceOffsets: IntArray? = null) {
     val columns get() = meta[0]
     val cursorX get() = meta[2]
     val cursorY get() = meta[3]

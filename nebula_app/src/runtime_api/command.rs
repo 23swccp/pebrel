@@ -372,7 +372,9 @@ impl RuntimeCommand {
                     return Err(ApiError::invalid_params("screen_viewport requires screen=true"));
                 }
                 if let Some(history) = &params.screen_history {
-                    if !params.screen || params.screen_viewport || !(1..=200).contains(&history.rows)
+                    if !params.screen
+                        || params.screen_viewport
+                        || !(1..=200).contains(&history.rows)
                         || history.start.is_some_and(|start| start > 9_007_199_254_740_991)
                     {
                         return Err(ApiError::invalid_params(
