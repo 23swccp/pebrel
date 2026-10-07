@@ -321,7 +321,7 @@ gpui-shell = [
 # 否则不带 gpui-shell 的默认 `cargo test -p nebula` 也会编译整棵 GPUI。
 video-background = ["gpui-shell", "dep:anyhow", "dep:raw-window-handle", "windows/Win32_Media_MediaFoundation"]
 gif-background = ["video-background", "dep:gif"]
-shader-background = ["gif-background", "dep:naga", "windows/Win32_Graphics_Direct3D_Fxc"]
+shader-background = ["gif-background", "dep:naga", "gpui/wgsl-postprocess", "windows/Win32_Graphics_Direct3D_Fxc"]
 gpui-test-support = ["gpui-shell", "gpui/test-support", "gpui-component/test-support"]
 # Explicit local updater acceptance harness; compile-rejected in release builds.
 update-test-source = ["gpui-shell"]
