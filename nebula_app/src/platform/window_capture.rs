@@ -26,11 +26,14 @@ pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
     use std::ptr;
     use windows_sys::Win32::Foundation::{HWND, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
-        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
-        DIB_RGB_COLORS, DeleteDC, DeleteObject, GdiFlush, GetDC, HBITMAP, HDC, HGDIOBJ, RGBQUAD,
-        ReleaseDC, SRCCOPY, SelectObject,
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
+        DeleteDC, DeleteObject, GdiFlush, GetDC, HBITMAP, HDC, HGDIOBJ, RGBQUAD, ReleaseDC,
+        SelectObject,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetClientRect, IsIconic};
+    use windows_sys::Win32::Storage::Xps::{PW_CLIENTONLY, PrintWindow};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetClientRect, IsIconic, PW_RENDERFULLCONTENT,
+    };
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
     struct Capture {
@@ -132,9 +135,9 @@ pub(crate) fn capture(window: &Window) -> io::Result<ClientFrame> {
             capture.previous = ptr::null_mut();
             return Err(io::Error::other("Could not select the snapshot bitmap"));
         }
-        if BitBlt(capture.memory, 0, 0, width as i32, height as i32, capture.source, 0, 0, SRCCOPY)
-            == 0
-        {
+        // GPU 合成内容不在窗口 DC 中；请求自有窗口的完整客户端画面，
+        // 不改用桌面截图，避免把遮挡窗口或其他应用的像素带入主题过渡。
+        if PrintWindow(hwnd, capture.memory, PW_CLIENTONLY | PW_RENDERFULLCONTENT) == 0 {
             return Err(io::Error::other("Could not capture the client pixels"));
         }
         if GdiFlush() == 0 {
