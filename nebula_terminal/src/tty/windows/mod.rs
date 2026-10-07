@@ -17,6 +17,7 @@ mod child;
 mod cmd_prompt;
 mod conpty;
 mod environment;
+mod powershell_launch;
 
 #[cfg(test)]
 mod proxy_tests;
@@ -1159,9 +1160,10 @@ fn nebula_default_shell(settings: NebulaRuntimeSettings) -> Shell {
 }
 
 fn cmdline(config: &Options) -> String {
-    let default_shell = resolved_default_shell();
     let using_default_shell = config.shell.is_none();
-    let shell = config.shell.as_ref().unwrap_or(&default_shell);
+    let default_shell = using_default_shell.then(resolved_default_shell);
+    let refreshed = config.shell.as_ref().and_then(powershell_launch::refresh);
+    let shell = refreshed.as_ref().or(config.shell.as_ref()).or(default_shell.as_ref()).unwrap();
 
     let mut cmd = String::new();
     push_escaped_arg(&mut cmd, &shell.program);
