@@ -8,11 +8,13 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.KeyEvent
 import android.text.InputType
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.widget.OverScroller
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -21,6 +23,11 @@ import kotlin.math.roundToInt
 class TerminalSnapshotView(context: Context) : View(context) {
     private var inputGeneration = 0
     private val taps = TerminalTapTracker(context)
+    private val fling = OverScroller(context)
+    private var flingX = 0
+    private var flingY = 0
+    private var gestureX = 0f
+    private var gestureY = 0f
     private val scrollbar = TerminalScrollbar(this) { fraction ->
         followInputCursor = false
         offsetY = maxY() * fraction
@@ -36,6 +43,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     var wrapLines = false
         set(value) {
             if (field == value) return
+            stopScrolling()
             selection.clear()
             field = value
             reproject()
@@ -48,6 +56,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     var inputTarget: TerminalInputTarget? = null
         set(value) {
             if (field === value) return
+            stopScrolling()
             field = value
             inputGeneration++
             composingText = ""
@@ -78,6 +87,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     var scrollTarget: TerminalInputTarget? = null
         set(value) {
             if (field === value) return
+            stopScrolling()
             field = value
             scrollRemainder = 0f
         }
@@ -101,7 +111,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
             field = value
             // 选择固定在用户看到的投影帧上；退出选择后才恢复到最新输出。
             if (selection.active && value != null) { invalidate(); return }
-            if (value == null) selection.clear()
+            if (value == null) { stopScrolling(); selection.clear() }
             metrics()
             reproject()
             // 桌面网格包含光标下方的空白；从网格底部回跳会把真实输出顶出屏幕。
@@ -115,6 +125,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     fun setFont(typeface: Typeface, size: Int) {
         val pixels = size.coerceIn(8, 32) * resources.displayMetrics.scaledDensity
         if (paint.typeface == typeface && fontPixels == pixels) return
+        stopScrolling()
         selection.clear()
         paint.typeface = typeface
         fontPixels = pixels
@@ -162,6 +173,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        stopScrolling()
         selection.clear()
         metrics()
         reproject()
@@ -202,6 +214,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     private val scaling = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
             if (!pinchZoom) return false
+            stopScrolling()
             reportZoom(true)
             return true
         }
@@ -232,34 +245,27 @@ class TerminalSnapshotView(context: Context) : View(context) {
         override fun onDoubleTap(event: MotionEvent) = true
         override fun onScroll(first: MotionEvent?, current: MotionEvent, dx: Float, dy: Float): Boolean {
             if (multiTouch) return true
-            followInputCursor = false
-            val previousY = offsetY
-            offsetX += dx
-            offsetY += dy
-            constrainOffsets()
-            followOutput = maxY() - offsetY < cellHeight * 2
-            val target = scrollTarget
-            val source = frame
-            // 先平移手机未显示的网格部分；越过边缘后才把剩余位移交给桌面滚轮。
-            // 重排阅读模式没有一一对应的桌面坐标，仍保留纯本地滚动。
-            if (!wrapLines && source != null && target?.supportsScroll == true) {
-                val remaining = dy - (offsetY - previousY)
-                scrollRemainder = (scrollRemainder - remaining / cellHeight).coerceIn(-32f, 32f)
-                val lines = scrollRemainder.toInt()
-                if (lines != 0) {
-                    val column = ((current.x + offsetX) / cellWidth).toInt().coerceIn(0, source.columns - 1)
-                    val row = ((current.y + offsetY) / cellHeight).toInt().coerceIn(0, source.rows.size - 1)
-                    if (target.scroll(lines, column, row)) {
-                        scrollRemainder -= lines
-                        followOutput = false
-                    } else scrollRemainder = 0f
-                }
-            }
-            invalidate()
+            gestureX = current.x
+            gestureY = current.y
+            scrollPixels(dx, dy)
+            return true
+        }
+        override fun onFling(first: MotionEvent?, current: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+            if (multiTouch || selection.active || frame == null) return false
+            gestureX = current.x
+            gestureY = current.y
+            flingX = 0
+            flingY = 0
+            val limit = ViewConfiguration.get(context).scaledMaximumFlingVelocity
+            // 本地像素位置按显示帧推进，不把惯性寿命交给网络请求完成时间。
+            fling.fling(0, 0, (-velocityX).toInt().coerceIn(-limit, limit),
+                (-velocityY).toInt().coerceIn(-limit, limit), -1_000_000, 1_000_000, -1_000_000, 1_000_000)
+            postInvalidateOnAnimation()
             return true
         }
         override fun onLongPress(event: MotionEvent) {
             taps.reset()
+            stopScrolling()
             if (!multiTouch) renderedFrame?.let {
                 followInputCursor = false
                 selection.geometry(cellWidth, cellHeight, offsetX, offsetY)
@@ -268,7 +274,60 @@ class TerminalSnapshotView(context: Context) : View(context) {
         }
     })
 
+    private fun scrollPixels(dx: Float, dy: Float): Boolean {
+        followInputCursor = false
+        val previousX = offsetX
+        val previousY = offsetY
+        offsetX += dx
+        offsetY += dy
+        constrainOffsets()
+        followOutput = maxY() - offsetY < cellHeight * 2
+        var consumed = offsetX != previousX || offsetY != previousY
+        val target = scrollTarget
+        val source = frame
+        // 先移动已在手机上的网格；本地边缘以外仍遵守原有远端滚轮及权限边界。
+        if (!wrapLines && source != null && source.rows.isNotEmpty() && source.columns > 0 &&
+            target?.supportsScroll == true) {
+            val remaining = dy - (offsetY - previousY)
+            scrollRemainder = (scrollRemainder - remaining / cellHeight).coerceIn(-32f, 32f)
+            val lines = scrollRemainder.toInt()
+            if (lines != 0) {
+                val column = ((gestureX + offsetX) / cellWidth).toInt().coerceIn(0, source.columns - 1)
+                val row = ((gestureY + offsetY) / cellHeight).toInt().coerceIn(0, source.rows.size - 1)
+                if (target.scroll(lines, column, row)) {
+                    scrollRemainder -= lines
+                    followOutput = false
+                    consumed = true
+                } else scrollRemainder = 0f
+            } else if (remaining != 0f) consumed = true
+        }
+        invalidate()
+        return consumed
+    }
+
+    private fun stopScrolling() {
+        fling.forceFinished(true)
+        scrollRemainder = 0f
+    }
+
+    override fun computeScroll() {
+        super.computeScroll()
+        if (fling.isFinished) return
+        if (multiTouch || selection.active || frame == null) { stopScrolling(); return }
+        if (!fling.computeScrollOffset()) return
+        val x = fling.currX
+        val y = fling.currY
+        val dx = (x - flingX).toFloat()
+        val dy = (y - flingY).toFloat()
+        flingX = x
+        flingY = y
+        if ((dx != 0f || dy != 0f) && !scrollPixels(dx, dy)) { stopScrolling(); return }
+        postInvalidateOnAnimation()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_CANCEL ||
+            event.pointerCount >= 2) stopScrolling()
         if (scrollbar.touch(event)) {
             taps.reset()
             selection.clear()
@@ -334,6 +393,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
 
     fun showKeyboard() {
         if (inputTarget == null) return
+        stopScrolling()
         followInputCursor = true
         revealCursor(true)
         constrainOffsets()
@@ -357,6 +417,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        stopScrolling()
         scrollbar.cancel()
         taps.reset()
         selection.clear()
@@ -366,6 +427,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
     }
 
     private fun resetZoom() {
+        stopScrolling()
         zoom = 1f
         metrics(); reproject()
         offsetX = 0f; offsetY = 0f
@@ -382,6 +444,7 @@ class TerminalSnapshotView(context: Context) : View(context) {
         if (selection.key(code, event, action)) return true
         val target = inputTarget ?: return false
         if (KeyEvent.isModifierKey(code) || code in setOf(KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN)) return false
+        stopScrolling()
         val mods = (if (event.isShiftPressed) 1 else 0) or (if (event.isCtrlPressed) 2 else 0) or
             (if (event.isAltPressed) 4 else 0) or (if (event.isMetaPressed) 8 else 0)
         val point = event.getUnicodeChar(event.metaState and KeyEvent.META_CTRL_MASK.inv())

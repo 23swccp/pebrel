@@ -38,6 +38,70 @@ import java.io.File
 @Config(sdk = [28])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TerminalSnapshotViewTest {
+    @Test fun localHistoryKeepsMovingAfterReleaseAndStopsAtTheNextTouch() {
+        val view = view(*Array(80) { row("abcd") }, height = 160)
+        val original = view.frame
+        fun offset() = TerminalSnapshotView::class.java.getDeclaredField("offsetY")
+            .apply { isAccessible = true }.getFloat(view)
+        eventTime = android.os.SystemClock.uptimeMillis()
+        val down = eventTime
+        touch(view, down, MotionEvent.ACTION_DOWN, 20f to 20f)
+        touch(view, down, MotionEvent.ACTION_MOVE, 20f to 60f)
+        touch(view, down, MotionEvent.ACTION_MOVE, 20f to 120f)
+        touch(view, down, MotionEvent.ACTION_UP, 20f to 140f)
+        val released = offset()
+        repeat(4) {
+            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16))
+            view.computeScroll()
+        }
+        assertTrue("history should coast after the finger lifts", offset() < released)
+        val again = eventTime
+        touch(view, again, MotionEvent.ACTION_DOWN, 20f to 100f)
+        val stopped = offset()
+        repeat(4) {
+            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16))
+            view.computeScroll()
+        }
+        assertEquals("a new touch owns scrolling immediately", stopped, offset(), .01f)
+        touch(view, again, MotionEvent.ACTION_CANCEL, 20f to 100f)
+        assertSame("inertia never rewrites the source grid", original, view.frame)
+    }
+
+    @Test fun remoteEdgeFlingStopsWhenItsInputOwnerIsRemoved() {
+        val view = view(row("abcd"), height = 200)
+        val scrolls = mutableListOf<Int>()
+        view.scrollTarget = object : TerminalInputTarget {
+            override val supportsScroll = true
+            override fun scroll(lines: Int, column: Int, row: Int): Boolean {
+                scrolls += lines
+                return true
+            }
+            override fun text(text: String): Boolean = error("fling must not type")
+            override fun key(code: Int, modifiers: Int, action: Int, text: String, unshifted: Int): Boolean =
+                error("fling must not synthesize command keys")
+        }
+        eventTime = android.os.SystemClock.uptimeMillis()
+        val down = eventTime
+        touch(view, down, MotionEvent.ACTION_DOWN, 20f to 20f)
+        touch(view, down, MotionEvent.ACTION_MOVE, 20f to 80f)
+        touch(view, down, MotionEvent.ACTION_MOVE, 20f to 140f)
+        touch(view, down, MotionEvent.ACTION_UP, 20f to 170f)
+        val released = scrolls.size
+        repeat(5) {
+            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16))
+            view.computeScroll()
+        }
+        assertTrue("inertia should continue the existing wheel route", scrolls.size > released)
+        assertTrue(scrolls.all { it in 1..32 })
+        view.scrollTarget = null
+        val removed = scrolls.size
+        repeat(5) {
+            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16))
+            view.computeScroll()
+        }
+        assertEquals("old ownership must not keep sending wheel requests", removed, scrolls.size)
+    }
+
     @Test fun boundarySwipeForwardsWheelInComposerModeWithoutTypingOrResizing() {
         val view = view(row("abcd"), height = 200)
         val original = view.frame
