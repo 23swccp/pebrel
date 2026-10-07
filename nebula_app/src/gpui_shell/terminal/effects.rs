@@ -4,8 +4,8 @@ mod frame;
 use super::{colors::Palette, cursor_painter::CursorPaint, view::TerminalView};
 use gpui::{
     App, AppContext, BackgroundShaderCancellation, Bounds, Context, DevicePixels, Entity, Pixels,
-    PostprocessDescriptor, PostprocessFeedback, StreamImageBudget, StreamImageBudgets,
-    StreamImageHandle, Subscription, Task, WeakEntity, Window, size,
+    PostprocessFeedback, StreamImageBudget, StreamImageBudgets, StreamImageHandle, Subscription,
+    Task, WeakEntity, WgslPostprocessDescriptor, Window, size,
 };
 use nebula_settings::{EffectAnimation, TerminalEffects};
 use nebula_terminal::term::color::Colors;
@@ -277,10 +277,10 @@ impl TerminalEffect {
         if self.ready || self.preparing.is_some() || self.failed || extent.iter().any(|v| *v <= 0) {
             return;
         }
-        let descriptor = PostprocessDescriptor {
+        let descriptor = WgslPostprocessDescriptor {
             size: size(DevicePixels(extent[0]), DevicePixels(extent[1])),
             uniform_size: compiler::UNIFORM_BYTES,
-            directx_passes: program.passes.clone(),
+            passes: program.passes.clone(),
         };
         let bytes = match descriptor.texture_bytes() {
             Ok(bytes) => bytes + compiler::UNIFORM_BYTES as u64,
@@ -295,7 +295,7 @@ impl TerminalEffect {
         }
         let owner = window.create_stream_image(self.gpu.clone(), cx);
         let cancelled = self.preparation_cancelled.clone();
-        let factory = match owner.prepare_postprocess(descriptor, cancelled.clone()) {
+        let factory = match owner.prepare_postprocess_wgsl(descriptor, cancelled.clone()) {
             Ok(factory) => factory,
             Err(error) => {
                 self.fail(&error, cx);
