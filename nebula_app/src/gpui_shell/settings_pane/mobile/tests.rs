@@ -164,13 +164,16 @@ fn mobile_three_states_and_manual_copy_use_the_rendered_controls(cx: &mut gpui::
     let copy =
         cx.debug_bounds("mobile-copy-invitation").expect("manual pairing action is rendered");
     assert!(copy.size.height >= px(28.0));
-    cx.simulate_click(copy.center(), gpui::Modifiers::default());
+    // 文字按钮按组件合同不抢输入焦点；用真实 Tab 路径触发失焦再验证收回。
+    cx.simulate_keystrokes("tab");
     cx.run_until_parked();
     cx.update(|window, cx| {
+        assert!(!pane.read(cx).mobile.port_input.read(cx).focus_handle(cx).is_focused(window));
         let _ = window.draw(cx);
     });
     assert_eq!(cx.debug_bounds("mobile-port-focus-line").unwrap().size.width, px(0.0));
     assert_eq!(pane.read_with(cx, |pane, _| pane.mobile.preferences().port), 0);
+    cx.simulate_click(copy.center(), gpui::Modifiers::default());
     let expected = pane.read_with(cx, |pane, _| pane.mobile.qr_payload.clone().unwrap());
     assert_eq!(cx.read_from_clipboard().unwrap().text().unwrap(), expected);
     assert!(pane.read_with(cx, |pane, cx| pane.mobile.copy_feedback.read(cx).is_copied()));
