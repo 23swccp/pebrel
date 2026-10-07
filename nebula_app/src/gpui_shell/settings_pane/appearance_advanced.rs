@@ -213,7 +213,7 @@ impl SettingsPane {
                     })),
             )
             .when(expanded, |group| {
-                group.child(self.terminal_effect_row(cx)).child(self.select_row(
+                group.child(self.terminal_effect_row(window, cx)).child(self.select_row(
                     "terminal_effect_animation",
                     language.text(Message::TerminalEffectAnimation),
                     language.text(Message::TerminalEffectAnimationDescription),

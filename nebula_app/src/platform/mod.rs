@@ -18,6 +18,8 @@ pub mod capabilities;
 pub mod credentials;
 pub mod dirs;
 pub(crate) mod distribution;
+#[cfg(feature = "gpui-shell")]
+pub(crate) mod effect_activity;
 pub(crate) mod elevation;
 pub(crate) mod environment;
 pub(crate) mod file_drag;
